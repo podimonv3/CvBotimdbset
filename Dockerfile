@@ -7,7 +7,7 @@ RUN apt update && apt upgrade -y && \
     rm -rf /var/lib/apt/lists/*
 
 # 3. വർക്കിംഗ് ഡയറക്ടറി സെറ്റ് ചെയ്യുക
-WORKDIR /cvilla-jan23
+WORKDIR /cvbot
 
 # 4. ഫയലുകൾ കോപ്പി ചെയ്യുക
 COPY requirements.txt ./requirements.txt
