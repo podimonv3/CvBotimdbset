@@ -1,19 +1,15 @@
-# 1. നിലവിൽ സപ്പോർട്ട് ഉള്ള ഏറ്റവും പുതിയ ഇമേജ് (Bookworm) ഉപയോഗിക്കുക
 FROM python:3.8-slim-bookworm
 
-# 2. പാക്കേജുകൾ ഇൻസ്റ്റാൾ ചെയ്യുക
 RUN apt update && apt upgrade -y && \
     apt install git -y && \
     rm -rf /var/lib/apt/lists/*
 
-# 3. വർക്കിംഗ് ഡയറക്ടറി സെറ്റ് ചെയ്യുക
-WORKDIR /cvbot
+WORKDIR /cvilla-jan23
 
-# 4. ഫയലുകൾ കോപ്പി ചെയ്യുക
-COPY requirements.txt ./requirements.txt
-COPY start.sh /start.sh
+# നിങ്ങളുടെ ഗിറ്റ്‌ഹബിലുള്ള എല്ലാ ഫയലുകളും നേരിട്ട് കോപ്പി ചെയ്യുന്നു
+COPY . .
 
-# 5. pip അപ്ഗ്രേഡ് ചെയ്ത് പാക്കേജുകൾ ഇൻസ്റ്റാൾ ചെയ്യുക
 RUN pip3 install -U pip && pip3 install -U -r requirements.txt
 
-CMD ["/bin/bash", "/start.sh"]
+# start.sh ഇല്ലാതെ ബോട്ട് നേരിട്ട് സ്റ്റാർട്ട് ചെയ്യുന്നു
+CMD ["python3", "bot.py"]
