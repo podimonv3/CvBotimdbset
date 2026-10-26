@@ -41,7 +41,21 @@ async def save_file(media):
 
     # TODO: Find better way to get same file_id for same media to avoid duplicates
     file_id, file_ref = unpack_new_file_id(media.file_id)
-    file_name = re.sub(r"(_|\-|\.|\+)", " ", str(media.file_name))
+    
+    raw_name = str(media.file_name)
+    
+    # 1. തുടക്കത്തിൽ വരുന്ന [] ബ്രാക്കറ്റുകൾ, @ ടാഗുകൾ, വെബ്‌സൈറ്റുകൾ, സ്പേസുകൾ എന്നിവ മാത്രം ഒഴിവാക്കാൻ
+    # ^(\s*(\[.*?\]|@\w+|www\.\S+|https?://\S+)\s*)+
+    # ഇത് ഫയലിന്റെ തുടക്കത്തിൽ ഇത്തരം കാര്യങ്ങൾ എത്ര തവണ വന്നാലും (ഉദാ: [MS] @KF) അതെല്ലാം നീക്കം ചെയ്യും.
+    clean_pattern = r"^(\s*(\[.*?\]|@\w+|www\.\S+|https?://\S+)\s*)+"
+    cleaned_name = re.sub(clean_pattern, "", raw_name, flags=re.IGNORECASE)
+    
+    # 2. ബാക്കിയുള്ള ഭാഗത്തെ അണ്ടർസ്‌കോർ, ഹൈഫൻ, ഡോട്ട് എന്നിവ മാറ്റി സ്പേസ് ആക്കുന്നു
+    file_name = re.sub(r"(_|\-|\.|\+)", " ", cleaned_name)
+    
+    # 3. തുടക്കത്തിലെയും ഒടുക്കത്തിലെയും അനാവശ്യ സ്പേസ് കളയുന്നു, ഇരട്ട സ്പേസുകൾ ഒറ്റ സ്പേസ് ആക്കുന്നു
+    file_name = re.sub(r"\s+", " ", file_name).strip()
+
     try:
         file = Media(
             file_id=file_id,
