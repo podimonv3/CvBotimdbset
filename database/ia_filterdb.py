@@ -171,13 +171,12 @@ async def get_search_results(
     if not files and cleaned_query:
         current_query = cleaned_query
         
-        # വാക്കിന് കുറഞ്ഞത് 4 അക്ഷരമെങ്കിലും ഉണ്ടാകണം
-        while len(current_query) > 3:
-            current_query = current_query[:-1] # അവസാനത്തെ ഒരു അക്ഷരം കളയുന്നു (viduthalay -> viduthala)
+        # സുരക്ഷാ മുൻകരുതൽ: വാക്കിന്റെ നീളം 4 അക്ഷരത്തിൽ കൂടുതൽ ആണെങ്കിൽ മാത്രം കട്ട് ചെയ്യുക
+        # (ഇത് വഴി 'Vi' അല്ലെങ്കിൽ 'V' പോലുള്ള ചെറിയ വാക്കുകളിലേക്ക് പോയി ബോട്ട് സ്ലോ ആകുന്നത് തടയാം)
+        while len(current_query) > 4:
+            current_query = current_query[:-1] # അവസാനത്തെ ഒരു അക്ഷരം കളയുന്നു
             
-            # പ്രധാന മാറ്റം: വെട്ടി ചെറുതാക്കിയ വാക്കിന് ശേഷം മറ്റ് അക്ഷരങ്ങൾ വരാൻ പാകത്തിന് .* ചേർക്കുന്നു
             if " " not in current_query:
-                # വാക്കിന്റെ തുടക്കത്തിൽ ബൗണ്ടറിയും അവസാനത്തിൽ ഏത് അക്ഷരവും വരാവുന്ന രീതിയിൽ മാറ്റുന്നു
                 raw_pattern = r"(\b|[\.\+\-_])" + re.escape(current_query) + r".*?(\b|[\.\+\-_]|$)"
                 prefix_pattern = r"^" + re.escape(current_query)
             else:
@@ -186,7 +185,7 @@ async def get_search_results(
 
             files, total_results = await execute_search(raw_pattern, prefix_pattern)
             
-            if files: # ഡാറ്റാബേസിൽ ഫയൽ കണ്ടെത്തിയാൽ ലൂപ്പ് നിർത്തുന്നു
+            if files: # റിസൾട്ട് കിട്ടിയാൽ ലൂപ്പ് ഇവിടെ അവസാനിക്കും
                 break
                 
     # നെക്സ്റ്റ് ഓഫ്സെറ്റ് കണക്കാക്കുന്നു
