@@ -473,68 +473,67 @@ async def settings(client, message):
         buttons = [
             [
                 InlineKeyboardButton(
-                    "Filter Button",
+                    'Filter Button',
                     callback_data=f'setgs#button#{settings["button"]}#{grp_id}',
                 ),
                 InlineKeyboardButton(
-                    "Single" if settings["button"] else "Double",
+                    'Single' if settings["button"] else 'Double',
                     callback_data=f'setgs#button#{settings["button"]}#{grp_id}',
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    "Bot PM",
+                    'Bot PM',
                     callback_data=f'setgs#botpm#{settings["botpm"]}#{grp_id}',
                 ),
                 InlineKeyboardButton(
-                    "✅ Yes" if settings["botpm"] else "❌ No",
+                    '✅ Yes' if settings["botpm"] else '❌ No',
                     callback_data=f'setgs#botpm#{settings["botpm"]}#{grp_id}',
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    "File Secure",
+                    'File Secure',
                     callback_data=f'setgs#file_secure#{settings["file_secure"]}#{grp_id}',
                 ),
                 InlineKeyboardButton(
-                    "✅ Yes" if settings["file_secure"] else "❌ No",
+                    '✅ Yes' if settings["file_secure"] else '❌ No',
                     callback_data=f'setgs#file_secure#{settings["file_secure"]}#{grp_id}',
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    "IMDB",
+                    'IMDB',
                     callback_data=f'setgs#imdb#{settings["imdb"]}#{grp_id}',
                 ),
                 InlineKeyboardButton(
-                    "✅ Yes" if settings["imdb"] else "❌ No",
+                    '✅ Yes' if settings["imdb"] else '❌ No',
                     callback_data=f'setgs#imdb#{settings["imdb"]}#{grp_id}',
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    "Spell Check",
+                    'Spell Check',
                     callback_data=f'setgs#spell_check#{settings["spell_check"]}#{grp_id}',
                 ),
                 InlineKeyboardButton(
-                    "✅ Yes" if settings["spell_check"] else "❌ No",
+                    '✅ Yes' if settings["spell_check"] else '❌ No',
                     callback_data=f'setgs#spell_check#{settings["spell_check"]}#{grp_id}',
                 ),
             ],
-            # [
-            #     InlineKeyboardButton(
-            #         'Welcome',
-            #         callback_data=f'setgs#welcome#{settings["welcome"]}#{grp_id}',
-            #     ),
-            #     InlineKeyboardButton(
-            #         '✅ Yes' if settings["welcome"] else '❌ No',
-            #         callback_data=f'setgs#welcome#{settings["welcome"]}#{grp_id}',
-            #     ),
-            # ],
+            [
+                InlineKeyboardButton(
+                    'Welcome',
+                    callback_data=f'setgs#welcome#{settings["welcome"]}#{grp_id}',
+                ),
+                InlineKeyboardButton(
+                    '✅ Yes' if settings["welcome"] else '❌ No',
+                    callback_data=f'setgs#welcome#{settings["welcome"]}#{grp_id}',
+                ),
+            ],
         ]
 
         reply_markup = InlineKeyboardMarkup(buttons)
-
         await message.reply_text(
             text=f"<b>Change Your Settings for {title} As Your Wish ⚙</b>",
             reply_markup=reply_markup,
