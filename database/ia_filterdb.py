@@ -102,23 +102,13 @@ async def get_search_results(
     cleaned_query = re.sub(r"[^\w\s]", "", query)
     cleaned_query = re.sub(r"\s+", " ", cleaned_query).strip()
 
-    # മെയിൻ ഫംഗ്ഷൻ - ഈ ഹെൽപർ ഫംഗ്ഷൻ ആണ് യഥാർത്ഥ തിരച്ചിൽ നടത്തുന്നത്
-    async def execute_search(search_text):
-        if not search_text:
-            raw_pattern = "."
-            prefix_pattern = "."
-        elif " " not in search_text:
-            raw_pattern = r"(\b|[\.\+\-_])" + search_text + r"(\b|[\.\+\-_])"
-            prefix_pattern = r"^" + re.escape(search_text) + r"(?=\s|[\.\+\-_()]|$)"
-        else:
-            raw_pattern = search_text.replace(" ", r".*[\s\.\+\-_]")
-            prefix_pattern = r"^" + re.escape(search_text).replace(r"\ ", r".*[\s\.\+\-_()]")
-
+    # എറർ വരാതിരിക്കാൻ നിങ്ങളുടെ പഴയ ലോജിക് അതേപടി ഒരു ഹെൽപർ ഫംഗ്ഷൻ ആക്കുന്നു
+    async def run_database_query(raw_pat, pref_pat):
         try:
-            regex = re.compile(raw_pattern, flags=re.IGNORECASE)
-            prefix_regex = re.compile(prefix_pattern, flags=re.IGNORECASE)
+            regex = re.compile(raw_pat, flags=re.IGNORECASE)
+            prefix_regex = re.compile(pref_pat, flags=re.IGNORECASE)
         except:
-            return [], 0, 0
+            return [], 0
 
         # --- ഫിൽട്ടറുകൾ തയാറാക്കുന്നു ---
         if USE_CAPTION_FILTER:
@@ -163,37 +153,51 @@ async def get_search_results(
         return prefix_files + normal_files, total_results
 
     # --- ലോജിക് ആരംഭിക്കുന്നു ---
-    
-    # 1. ആദ്യം യൂസർ നൽകിയ അതേ വാക്ക് വെച്ച് തിരയുന്നു (उदा: bhramem)
-    files, total_results = await execute_search(cleaned_query)
-    
-    # 2. റിസൾട്ട് ഒന്നും കിട്ടിയില്ലെങ്കിൽ മാത്രം അക്ഷരങ്ങൾ ഓരോന്നായി കുറച്ച് തിരയുന്നു
+
+    # 1. ആദ്യം യൂസർ നൽകിയ അതേ വാക്ക് വെച്ച് കൃത്യമായി പാറ്റേൺ ഉണ്ടാക്കുന്നു (Exact Match)
+    if not cleaned_query:
+        raw_pattern = "."
+        prefix_pattern = "."
+    elif " " not in cleaned_query:
+        raw_pattern = r"(\b|[\.\+\-_])" + cleaned_query + r"(\b|[\.\+\-_])"
+        prefix_pattern = r"^" + re.escape(cleaned_query) + r"(?=\s|[\.\+\-_()]|$)"
+    else:
+        raw_pattern = cleaned_query.replace(" ", r".*[\s\.\+\-_]")
+        prefix_pattern = r"^" + re.escape(cleaned_query).replace(r"\ ", r".*[\s\.\+\-_()]")
+
+    # ഒന്നാമത്തെ സെർച്ച് റൺ ചെയ്യുന്നു
+    files, total_results = await run_database_query(raw_pattern, prefix_pattern)
+
+    # 2. റിസൾട്ട് ഒന്നും കിട്ടിയില്ലെങ്കിൽ മാത്രം അക്ഷരങ്ങൾ ഓരോന്നായി കുറച്ച് വൈൽഡ്കാർഡ് വഴി തിരയുന്നു
     if not files and cleaned_query:
         current_query = cleaned_query
         
-        # സുരക്ഷാ മുൻകരുതൽ: വാക്കിന്റെ നീളം 4 അക്ഷരത്തിൽ കൂടുതൽ ആണെങ്കിൽ മാത്രം കട്ട് ചെയ്യുക
-        # (ഇത് വഴി 'Vi' അല്ലെങ്കിൽ 'V' പോലുള്ള ചെറിയ വാക്കുകളിലേക്ക് പോയി ബോട്ട് സ്ലോ ആകുന്നത് തടയാം)
+        # സുരക്ഷ മുൻനിർത്തി വാക്കിന്റെ ആകെ നീളം 4-ൽ കൂടുതൽ ആണെങ്കിൽ മാത്രം വെട്ടുക
         while len(current_query) > 4:
-            current_query = current_query[:-1] # അവസാനത്തെ ഒരു അക്ഷരം കളയുന്നു
+            current_query = current_query[:-1] # അവസാനത്തെ ഒരക്ഷരം കളയുന്നു
             
             if " " not in current_query:
+                # വാക്കിന് ശേഷം മറ്റ് അക്ഷരങ്ങൾ വരാൻ പാകത്തിന് .*? ചേർക്കുന്നു
                 raw_pattern = r"(\b|[\.\+\-_])" + re.escape(current_query) + r".*?(\b|[\.\+\-_]|$)"
                 prefix_pattern = r"^" + re.escape(current_query)
             else:
+                # പല വാക്കുകൾ ഉണ്ടെങ്കിൽ അവസാന വാക്കിന് ശേഷം .* ചേർക്കുന്നു
                 raw_pattern = current_query.replace(" ", r".*[\s\.\+\-_]") + r".*"
                 prefix_pattern = r"^" + re.escape(current_query).replace(r"\ ", r".*[\s\.\+\-_()]") + r".*"
 
-            files, total_results = await execute_search(raw_pattern, prefix_pattern)
+            # വീണ്ടും സെർച്ച് റൺ ചെയ്യുന്നു
+            files, total_results = await run_database_query(raw_pattern, prefix_pattern)
             
-            if files: # റിസൾട്ട് കിട്ടിയാൽ ലൂപ്പ് ഇവിടെ അവസാനിക്കും
+            if files: # ഫയൽ കിട്ടിയാൽ ലൂപ്പ് നിർത്തുന്നു
                 break
-                
+
     # നെക്സ്റ്റ് ഓഫ്സെറ്റ് കണക്കാക്കുന്നു
     next_offset = offset + max_results
     if next_offset > total_results:
         next_offset = ""
 
     return files, next_offset, total_results
+
 
 
 
