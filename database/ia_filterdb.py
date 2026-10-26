@@ -170,14 +170,25 @@ async def get_search_results(
     # 2. റിസൾട്ട് ഒന്നും കിട്ടിയില്ലെങ്കിൽ മാത്രം അക്ഷരങ്ങൾ ഓരോന്നായി കുറച്ച് തിരയുന്നു
     if not files and cleaned_query:
         current_query = cleaned_query
-        # വാക്കിന് കുറഞ്ഞത് 3 അക്ഷരമെങ്കിലും ഉണ്ടാകണം (വളരെ ചെറുതായാൽ തെറ്റായ റിസൾട്ട് വരും)
+        
+        # വാക്കിന് കുറഞ്ഞത് 4 അക്ഷരമെങ്കിലും ഉണ്ടാകണം
         while len(current_query) > 3:
-            current_query = current_query[:-1] # അവസാനത്തെ ഒരു അക്ഷരം കളയുന്നു (bhramem -> bhrame -> bhram)
-            files, total_results = await execute_search(current_query)
+            current_query = current_query[:-1] # അവസാനത്തെ ഒരു അക്ഷരം കളയുന്നു (viduthalay -> viduthala)
             
-            if files: # റിസൾട്ട് ലഭിക്കുകയാണെങ്കിൽ ലൂപ്പ് നിർത്തുന്നു
-                break
+            # പ്രധാന മാറ്റം: വെട്ടി ചെറുതാക്കിയ വാക്കിന് ശേഷം മറ്റ് അക്ഷരങ്ങൾ വരാൻ പാകത്തിന് .* ചേർക്കുന്നു
+            if " " not in current_query:
+                # വാക്കിന്റെ തുടക്കത്തിൽ ബൗണ്ടറിയും അവസാനത്തിൽ ഏത് അക്ഷരവും വരാവുന്ന രീതിയിൽ മാറ്റുന്നു
+                raw_pattern = r"(\b|[\.\+\-_])" + re.escape(current_query) + r".*?(\b|[\.\+\-_]|$)"
+                prefix_pattern = r"^" + re.escape(current_query)
+            else:
+                raw_pattern = current_query.replace(" ", r".*[\s\.\+\-_]") + r".*"
+                prefix_pattern = r"^" + re.escape(current_query).replace(r"\ ", r".*[\s\.\+\-_()]") + r".*"
 
+            files, total_results = await execute_search(raw_pattern, prefix_pattern)
+            
+            if files: # ഡാറ്റാബേസിൽ ഫയൽ കണ്ടെത്തിയാൽ ലൂപ്പ് നിർത്തുന്നു
+                break
+                
     # നെക്സ്റ്റ് ഓഫ്സെറ്റ് കണക്കാക്കുന്നു
     next_offset = offset + max_results
     if next_offset > total_results:
