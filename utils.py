@@ -97,77 +97,68 @@ async def is_subscribed(bot, query):
 import re
 import imdb
 
-# Cinemagoer-ന്റെ പുതിയ ഇൻസ്റ്റൻസ് നിർമ്മിക്കുക (കോഡിന് മുകളിലായി ഇത് നൽകുക)
 ia = imdb.Cinemagoer()
 
 async def get_poster(query, bulk=False, id=False, file=None):
     if not id:
-        query = (query.strip()).lower()
-        title = query
-        year = re.findall(r"[1-2]\d{3}$", query, re.IGNORECASE)
-        if year:
-            year = list_to_str(year[:1])
-            title = (query.replace(year, "")).strip()
-        elif file is not None:
-            year = re.findall(r"[1-2]\d{3}", file, re.IGNORECASE)
-            if year:
-                year = list_to_str(year[:1])
+        query = str(query or "").strip()
+        if not query: return None
+        year = None
+        match = re.search(r'\b((?:19|20)\d{2})\s*$', query)
+        if match:
+            year = match.group(1)
+            title = query[:match.start()].strip()
         else:
-            year = None
-            
-        # പഴയ 'imdb.search_movie' മാറ്റിയ ഇടം
-        movieid = ia.search_movie(title.lower(), results=10)
-        if not movieid:
+            title = query
+            if file:
+                match = re.search(r'\b((?:19|20)\d{2})\b', str(file))
+                if match: year = match.group(1)
+
+        try:
+            results = ia.search_movie(title)
+        except Exception:
             return None
+        if not results: return None
+
+        filtered = [
+            m for m in results
+            if m.get("kind") in ("movie", "tv series", "tv mini series")
+        ]
+        if not filtered: filtered = results
+
         if year:
-            filtered = list(filter(lambda k: str(k.get("year")) == str(year), movieid))
-            if not filtered:
-                filtered = movieid
-        else:
-            filtered = movieid
-        movieid = list(
-            filter(lambda k: k.get("kind") in ["movie", "tv series"], filtered)
-        )
-        if not movieid:
-            movieid = filtered
-        if bulk:
-            return movieid
-        movieid = movieid[0].movieID
+            year_matches = [m for m in filtered if str(m.get("year", "")) == year]
+            if year_matches: filtered = year_matches
+
+        if bulk: return filtered[:10]
+        movieid = str(filtered[0].movieID)
     else:
-        movieid = query
-        
-    # പഴയ 'imdb.get_movie' മാറ്റിയ ഇടം
-    movie = ia.get_movie(movieid)
-    
-    # പൂർണ്ണമായ കാസ്റ്റ്, പ്ലോട്ട്, റൺടൈം വിവരങ്ങൾ കൃത്യമായി ലഭിക്കാൻ ഡാറ്റ അപ്ഡേറ്റ് ചെയ്യുന്നു
-    ia.update(movie, info=['main', 'plot'])
-    
-    if movie.get("original air date"):
-        date = movie["original air date"]
-    elif movie.get("year"):
-        date = movie.get("year")
-    else:
-        date = "N/A"
-        
-    plot = ""
-    if not LONG_IMDB_DESCRIPTION:
-        plot = movie.get("plot")
-        if plot and len(plot) > 0:
-            plot = plot[0]
-    else:
-        plot = movie.get("plot outline")
-    if plot and len(plot) > 800:
-        plot = plot[0:800] + "..."
+        movieid = str(query or "").strip()
+        movieid = re.sub(r'^tt', '', movieid)
+        if not movieid.isdigit(): return None
+
+    try:
+        movie = ia.get_movie(movieid)
+        ia.update(movie, info=["main", "plot"])
+    except Exception:
+        return None
+
+    date = movie.get("original air date") or movie.get("year") or "N/A"
+    plot = movie.get("plot outline") if LONG_IMDB_DESCRIPTION else movie.get("plot")
+    if isinstance(plot, list): plot = plot[0] if plot else ""
+    if plot and len(plot) > 800: plot = plot[:800] + "..."
+
+    imdb_id = str(movie.get("imdbID") or movieid)
 
     return {
         "title": movie.get("title"),
         "votes": movie.get("votes"),
         "aka": list_to_str(movie.get("akas")),
         "seasons": movie.get("number of seasons"),
-        "box_office": movie.get("box office"),
+        "box_office": list_to_str(movie.get("box office")),
         "localized_title": movie.get("localized title"),
         "kind": movie.get("kind"),
-        "imdb_id": f"tt{movie.get('imdbID')}",
+        "imdb_id": f"tt{imdb_id}",
         "cast": list_to_str(movie.get("cast")),
         "runtime": list_to_str(movie.get("runtimes")),
         "countries": list_to_str(movie.get("countries")),
@@ -183,11 +174,12 @@ async def get_poster(query, bulk=False, id=False, file=None):
         "release_date": date,
         "year": movie.get("year"),
         "genres": list_to_str(movie.get("genres")),
-        "poster": movie.get("full-size cover url"),
-        "plot": plot,
-        "rating": str(movie.get("rating")),
-        "url": f"https://www.imdb.com/title/tt{movieid}",
+        "poster": movie.get("full-size cover url") or movie.get("cover url"),
+        "plot": plot or "",
+        "rating": str(movie.get("rating") or ""),
+        "url": f"https://www.imdb.com/title/tt{imdb_id}/"
     }
+
 
 
 # https://github.com/odysseusmax/animated-lamp/blob/2ef4730eb2b5f0596ed6d03e7b05243d93e3415b/bot/utils/broadcast.py#L37
@@ -215,18 +207,49 @@ async def broadcast_messages(user_id, message):
         return False, "Error"
 
 
+import urllib.parse
+import httpx
+from bs4 import BeautifulSoup
+
 async def search_gagala(text):
-    usr_agent = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/61.0.3163.100 Safari/537.36"
+    text = str(text or "").strip()
+    if not text: return []
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9"
     }
-    text = text.replace(" ", "+")
-    url = f"https://www.google.com/search?q={text}"
-    response = requests.get(url, headers=usr_agent)
-    response.raise_for_status()
-    soup = BeautifulSoup(response.text, "html.parser")
-    titles = soup.find_all("h3")
-    return [title.getText() for title in titles]
+    url = f"https://www.google.com/search?q={urllib.parse.quote_plus(text)}"
+
+    try:
+        async with httpx.AsyncClient(
+            headers=headers,
+            follow_redirects=True,
+            timeout=8.0
+        ) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+
+        soup = BeautifulSoup(response.text, "html.parser")
+        result_titles = []
+        seen = set()
+
+        for title in soup.select("a:has(h3) h3"):
+            name = title.get_text(" ", strip=True)
+            if name and name not in seen:
+                seen.add(name)
+                result_titles.append(name)
+                if len(result_titles) >= 10: break
+
+        return result_titles
+
+    except (httpx.HTTPError, ValueError) as e:
+        print(f"Google search error: {e}")
+        return []
+    except Exception as e:
+        print(f"Google parsing error: {e}")
+        return []
 
 
 async def get_settings(group_id):
