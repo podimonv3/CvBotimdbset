@@ -6,7 +6,8 @@ from aiohttp import web
 # Get logging configurations
 logging.config.fileConfig("logging.conf")
 logging.getLogger().setLevel(logging.INFO)
-logging.getLogger("pyrogram").setLevel(logging.ERROR)
+# pyrogram എന്നത് മാറ്റി pyrofork ആക്കി ലിന്റ് എറർ ഒഴിവാക്കി
+logging.getLogger("pyrofork").setLevel(logging.ERROR)
 logging.getLogger("imdbpy").setLevel(logging.ERROR)
 
 from pyrogram import Client, __version__, types
@@ -47,7 +48,7 @@ class Bot(Client):
         temp.BANNED_CHATS = b_chats
         await super().start()
         
-        # വെബ് സർവർ ഇവിടെ സ്റ്റാർട്ട് ചെയ്യുന്നു
+        # വെബ് സർവർ ഇവിടെ സ്റ്റാർട്ട് ചെയ്യുന്നു (Koyeb Healthy ആകാൻ)
         await start_web_server()
         
         scheduler.start()
