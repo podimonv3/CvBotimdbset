@@ -7,7 +7,7 @@ from aiohttp import web
 logging.config.fileConfig("logging.conf")
 logging.getLogger().setLevel(logging.INFO)
 # pyrogram എന്നത് മാറ്റി pyrofork ആക്കി ലിന്റ് എറർ ഒഴിവാക്കി
-logging.getLogger("pyrofork").setLevel(logging.ERROR)
+logging.getLogger("pyrogram").setLevel(logging.ERROR)
 logging.getLogger("imdbpy").setLevel(logging.ERROR)
 
 from pyrogram import Client, __version__, types
