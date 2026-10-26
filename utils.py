@@ -8,7 +8,7 @@ from typing import List, Union
 import requests
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from bs4 import BeautifulSoup
-from imdb import IMDb
+
 from pyrogram import enums
 from pyrogram.errors import (
     FloodWait,
@@ -30,7 +30,10 @@ BTN_URL_REGEX = re.compile(
     r"(\[([^\[]+?)\]\((buttonurl|buttonalert):(?:/{0,2})(.+?)(:same)?\))"
 )
 
-imdb = IMDb()
+
+ia = imdb.Cinemagoer()
+
+
 scheduler = AsyncIOScheduler(timezone="UTC")
 
 BANNED = {}
@@ -91,9 +94,14 @@ async def is_subscribed(bot, query):
             return False
 
 
+import re
+import imdb
+
+# Cinemagoer-ന്റെ പുതിയ ഇൻസ്റ്റൻസ് നിർമ്മിക്കുക (കോഡിന് മുകളിലായി ഇത് നൽകുക)
+ia = imdb.Cinemagoer()
+
 async def get_poster(query, bulk=False, id=False, file=None):
     if not id:
-        # https://t.me/GetTGLink/4183
         query = (query.strip()).lower()
         title = query
         year = re.findall(r"[1-2]\d{3}$", query, re.IGNORECASE)
@@ -106,7 +114,9 @@ async def get_poster(query, bulk=False, id=False, file=None):
                 year = list_to_str(year[:1])
         else:
             year = None
-        movieid = imdb.search_movie(title.lower(), results=10)
+            
+        # പഴയ 'imdb.search_movie' മാറ്റിയ ഇടം
+        movieid = ia.search_movie(title.lower(), results=10)
         if not movieid:
             return None
         if year:
@@ -125,13 +135,20 @@ async def get_poster(query, bulk=False, id=False, file=None):
         movieid = movieid[0].movieID
     else:
         movieid = query
-    movie = imdb.get_movie(movieid)
+        
+    # പഴയ 'imdb.get_movie' മാറ്റിയ ഇടം
+    movie = ia.get_movie(movieid)
+    
+    # പൂർണ്ണമായ കാസ്റ്റ്, പ്ലോട്ട്, റൺടൈം വിവരങ്ങൾ കൃത്യമായി ലഭിക്കാൻ ഡാറ്റ അപ്ഡേറ്റ് ചെയ്യുന്നു
+    ia.update(movie, info=['main', 'plot'])
+    
     if movie.get("original air date"):
         date = movie["original air date"]
     elif movie.get("year"):
         date = movie.get("year")
     else:
         date = "N/A"
+        
     plot = ""
     if not LONG_IMDB_DESCRIPTION:
         plot = movie.get("plot")
