@@ -99,7 +99,6 @@ async def get_search_results(
     """For given query return (results, next_offset)"""
 
     # 1. യൂസർ അയക്കുന്ന ടെക്സ്റ്റിലെ ചിഹ്നങ്ങളും സ്പെഷ്യൽ ക്യാരക്ടറുകളും നീക്കം ചെയ്യുന്നു
-    # (അക്ഷരങ്ങളും അക്കങ്ങളും സ്പേസും മാത്രം നിലനിർത്തുന്നു)
     cleaned_query = re.sub(r"[^\w\s]", "", query)
 
     # 2. ഒന്നിൽ കൂടുതൽ സ്പേസുകൾ ഉണ്ടെങ്കിൽ അത് മാറ്റി ഒരൊറ്റ സ്പേസ് ആക്കുന്നു
@@ -107,40 +106,82 @@ async def get_search_results(
 
     if not cleaned_query:
         raw_pattern = "."
+        prefix_pattern = "."
     elif " " not in cleaned_query:
         raw_pattern = r"(\b|[\.\+\-_])" + cleaned_query + r"(\b|[\.\+\-_])"
+        prefix_pattern = r"^" + re.escape(cleaned_query) + r"(?=\s|[\.\+\-_()]|$)"
     else:
-        # സിനിമയുടെ പേരിനിടയിൽ ഡാഷോ ഫുൾസ്റ്റോപ്പോ വന്നാലും കിട്ടാൻ വേണ്ടി
         raw_pattern = cleaned_query.replace(" ", r".*[\s\.\+\-_]")
+        prefix_pattern = r"^" + re.escape(cleaned_query).replace(r"\ ", r".*[\s\.\+\-_()]")
 
     try:
         regex = re.compile(raw_pattern, flags=re.IGNORECASE)
+        prefix_regex = re.compile(prefix_pattern, flags=re.IGNORECASE)
     except:
         return [], "", 0
 
+    # --- ഫിൽട്ടറുകൾ തയാറാക്കുന്നു ---
+    
+    # 1. മുൻഗണന നൽകേണ്ട ഫിൽട്ടർ (തുടക്കത്തിൽ വാക്കുള്ളവ)
     if USE_CAPTION_FILTER:
-        filter = {"$or": [{"file_name": regex}, {"caption": regex}]}
+        prefix_filter = {"$or": [{"file_name": prefix_regex}, {"caption": prefix_regex}]}
     else:
-        filter = {"file_name": regex}
+        prefix_filter = {"file_name": prefix_regex}
+
+    # 2. സാധാരണ ഫിൽട്ടർ (ഇടയിൽ വാക്കുള്ളവ - തുടക്കത്തിലുള്ളവ ഒഴിവാക്കുന്നു)
+    if USE_CAPTION_FILTER:
+        normal_filter = {
+            "$and": [
+                {"$or": [{"file_name": regex}, {"caption": regex}]},
+                {"file_name": {"$not": prefix_regex}},
+                {"caption": {"$not": prefix_regex}}
+            ]
+        }
+    else:
+        normal_filter = {
+            "$and": [
+                {"file_name": regex},
+                {"file_name": {"$not": prefix_regex}}
+            ]
+        }
 
     if file_type:
-        filter["file_type"] = file_type
+        prefix_filter["file_type"] = file_type
+        # normal_filter ഒരു $and ആയതുകൊണ്ട് അതിലേക്ക് file_type പുഷ് ചെയ്യുന്നു
+        normal_filter["$and"].append({"file_type": file_type})
 
-    total_results = await Media.count_documents(filter)
+    # ആകെ റിസൾട്ടുകളുടെ എണ്ണം കാണാൻ (രണ്ട് ഫിൽട്ടറിലെയും തുക)
+    total_prefix = await Media.count_documents(prefix_filter)
+    total_normal = await Media.count_documents(normal_filter)
+    total_results = total_prefix + total_normal
+
     next_offset = offset + max_results
-
     if next_offset > total_results:
         next_offset = ""
 
-    cursor = Media.find(filter)
-    # Sort by recent
-    cursor.sort("$natural", -1)
-    # Slice files according to offset and max results
-    cursor.skip(offset).limit(max_results)
-    # Get list of files
-    files = await cursor.to_list(length=max_results)
+    # --- ഡാറ്റാബേസ് സെർച്ചിംഗ് ---
+    
+    # ആദ്യം മുൻഗണനയുള്ള ഫയലുകൾ നോക്കുന്നു
+    prefix_cursor = Media.find(prefix_filter).sort("$natural", -1).skip(offset).limit(max_results)
+    prefix_files = await prefix_cursor.to_list(length=max_results)
+
+    # ലിമിറ്റ് തികഞ്ഞില്ലെങ്കിൽ മാത്രം സാധാരണ ഫയലുകൾ തിരയുന്നു
+    if len(prefix_files) < max_results:
+        remaining = max_results - len(prefix_files)
+        
+        # prefix ഫയലുകൾ കഴിഞ്ഞ് ബാക്കി എത്ര skip ചെയ്യണമെന്ന് കണക്കാക്കുന്നു
+        normal_skip = max(0, offset - total_prefix)
+        
+        normal_cursor = Media.find(normal_filter).sort("$natural", -1).skip(normal_skip).limit(remaining)
+        normal_files = await normal_cursor.to_list(length=remaining)
+    else:
+        normal_files = []
+
+    # രണ്ട് ലിസ്റ്റും ഒന്നിച്ച് ചേർക്കുന്നു (തുടക്കത്തിൽ വാക്കുള്ളവ ആദ്യമുണ്ടാകും)
+    files = prefix_files + normal_files
 
     return files, next_offset, total_results
+
 
 
 
