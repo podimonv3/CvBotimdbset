@@ -43,11 +43,19 @@ async def give_filter(client, message):
         await auto_filter(client, message)
 
 
+
 @Client.on_callback_query(filters.regex(r"^next"))
 async def next_page(bot, query):
+    # 1. ബട്ടൺ ക്ലിക്ക് ചെയ്ത ഉടൻ തന്നെ ഇവിടെ ആൻസർ നൽകുന്നു
+    try:
+        await query.answer()
+    except Exception:
+        pass
+
     ident, req, key, offset = query.data.split("_")
     if int(req) not in [query.from_user.id, 0]:
         return await query.answer("oKda", show_alert=True)
+        
     try:
         offset = int(offset)
     except:
@@ -101,6 +109,7 @@ async def next_page(bot, query):
         off_set = None
     else:
         off_set = offset - 10
+        
     if n_offset == 0:
         btn.append(
             [
@@ -140,11 +149,21 @@ async def next_page(bot, query):
                 ),
             ],
         )
+        
+    # 2. മെസ്സേജ് എഡിറ്റ് ചെയ്യുമ്പോൾ ഫ്ലഡ് വെയ്റ്റ് വരാതിരിക്കാൻ സുരക്ഷിതമായ ട്രൈ-എക്സെപ്റ്റ് ബ്ലോക്ക്
     try:
         await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(btn))
     except MessageNotModified:
         pass
-    await query.answer()
+    except FloodWait as e:
+        await asyncio.sleep(e.value) # FloodWait സെക്കൻഡുകൾ ബോട്ട് സ്വയം കാത്തുനിൽക്കും
+        try:
+            await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(btn))
+        except Exception:
+            pass
+    except Exception:
+        pass
+
 
 
 @Client.on_callback_query(filters.regex(r"^spolling"))
