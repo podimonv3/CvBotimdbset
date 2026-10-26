@@ -109,21 +109,13 @@ async def ForceSub(bot: Client, update: Message, file_id: str = False, mode="che
         else:
             return True
     except UserNotParticipant:
-        text = """**__♦️ READ THIS INSTRUCTION ♦️
-
-🗣 നിങ്ങൾ ചോദിക്കുന്ന സിനിമകൾ നിങ്ങൾക്ക് ലഭിക്കണം എന്നുണ്ടെങ്കിൽ നിങ്ങൾ ഞങ്ങളുടെ ചാനലിലേക്ക് റിക്വസ്റ്റ് ചെയ്തിരിക്കണം. റിക്വസ്റ്റ് ചെയ്യാൻ " 📢 Request to Join Channel 📢 "എന്ന ബട്ടണിലോ താഴെ കാണുന്ന ലിങ്കിലോ ക്ലിക്ക് ചെയ്യാവുന്നതാണ്. ജോയിൻ ചെയ്ത ശേഷം " 🔄 Try Again 🔄 " എന്ന ബട്ടണിൽ അമർത്തിയാൽ നിങ്ങൾക്ക് ഞാൻ ആ സിനിമ അയച്ചു തരുന്നതാണ്..😍
-
-🗣 In Order To Get The Movie Requested By You in Our Group, You Must Have To Request to join Our Official Channel First By Clicking " 📢 Request to Join Channel 📢 " Button or the Link shown Below. After That, Click " 🔄 Try Again 🔄 " Button. I'll Send You That Movie 🙈
-
-👇 CLICK "REQUEST TO JOIN CHANNEL" THEN CLICK "TRY AGAIN" 👇
-
-[https://t.me/+uB8YLQcpbDowYzBl]__**"""
+        text = """**Please Join My Updates Channel to use this Bot!**"""
 
         buttons = [
-            [InlineKeyboardButton("📢 Request to Join Channel 📢", url=invite_link)],
+            [InlineKeyboardButton("🤖 Join Updates Channel", url=invite_link)],
             [
                 InlineKeyboardButton(
-                    " 🔄 Try Again 🔄 ", callback_data=f"{mode}#{file_id}"
+                    " 🔄 Try Again", callback_data=f"{mode}#{file_id}"
                 )
             ],
         ]
