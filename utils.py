@@ -5,9 +5,13 @@ import re
 from datetime import datetime
 from typing import List, Union
 
+import urllib.parse
+import httpx
+from bs4 import BeautifulSoup
+
+import imdb
 import requests
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from bs4 import BeautifulSoup
 
 from pyrogram import enums
 from pyrogram.errors import (
@@ -94,10 +98,8 @@ async def is_subscribed(bot, query):
             return False
 
 
-import re
-import imdb
 
-ia = imdb.Cinemagoer()
+
 
 async def get_poster(query, bulk=False, id=False, file=None):
     if not id:
@@ -207,9 +209,6 @@ async def broadcast_messages(user_id, message):
         return False, "Error"
 
 
-import urllib.parse
-import httpx
-from bs4 import BeautifulSoup
 
 async def search_gagala(text):
     text = str(text or "").strip()
