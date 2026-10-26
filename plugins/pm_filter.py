@@ -733,15 +733,32 @@ async def auto_filter(client, msg, spoll=False):
     if not spoll:
         message = msg
         settings = await get_settings(message.chat.id)
+        
         if message.text.startswith("/"):
             return  # ignore commands
+            
         if re.findall("((^\/|^,|^!|^\.|^[\U0001F600-\U000E007F]).*)", message.text):
             return
-        if 2 < len(message.text) < 100:
-            search = message.text
+            
+        if 1 < len(message.text) < 100:
+            raw_search_query = message.text
+            
+            # 1. Remove invisible characters
+            search = re.sub(r'[\u200b\u200c\u200d\ufeff\u200e\u200f]', '', raw_search_query)
+            
+            # 2. Remove single and smart quotes
+            search = re.sub(r"['‘’]", "", search)
+            
+            # 3. Replace special characters, symbols, and brackets with a space
+            search = re.sub(r"""[-–—\\_,#&?/( )\[\]":\.¡%“”]""", " ", search)
+            
+            # 4. Normalize all regular and Unicode white spaces into a single space
+            search = re.sub(r'[\s\u00a0\u2000-\u200a\u202f\u205f\u3000]+', ' ', search)
+            
             files, offset, total_results = await get_search_results(
                 search.lower(), offset=0, filter=True
             )
+            
             if not files:
                 if settings["spell_check"]:
                     return await advantage_spell_chok(msg)
