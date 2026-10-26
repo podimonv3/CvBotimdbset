@@ -100,85 +100,88 @@ async def get_search_results(
 
     # 1. യൂസർ അയക്കുന്ന ടെക്സ്റ്റിലെ ചിഹ്നങ്ങളും സ്പെഷ്യൽ ക്യാരക്ടറുകളും നീക്കം ചെയ്യുന്നു
     cleaned_query = re.sub(r"[^\w\s]", "", query)
-
-    # 2. ഒന്നിൽ കൂടുതൽ സ്പേസുകൾ ഉണ്ടെങ്കിൽ അത് മാറ്റി ഒരൊറ്റ സ്പേസ് ആക്കുന്നു
     cleaned_query = re.sub(r"\s+", " ", cleaned_query).strip()
 
-    if not cleaned_query:
-        raw_pattern = "."
-        prefix_pattern = "."
-    elif " " not in cleaned_query:
-        raw_pattern = r"(\b|[\.\+\-_])" + cleaned_query + r"(\b|[\.\+\-_])"
-        prefix_pattern = r"^" + re.escape(cleaned_query) + r"(?=\s|[\.\+\-_()]|$)"
-    else:
-        raw_pattern = cleaned_query.replace(" ", r".*[\s\.\+\-_]")
-        prefix_pattern = r"^" + re.escape(cleaned_query).replace(r"\ ", r".*[\s\.\+\-_()]")
+    # മെയിൻ ഫംഗ്ഷൻ - ഈ ഹെൽപർ ഫംഗ്ഷൻ ആണ് യഥാർത്ഥ തിരച്ചിൽ നടത്തുന്നത്
+    async def execute_search(search_text):
+        if not search_text:
+            raw_pattern = "."
+            prefix_pattern = "."
+        elif " " not in search_text:
+            raw_pattern = r"(\b|[\.\+\-_])" + search_text + r"(\b|[\.\+\-_])"
+            prefix_pattern = r"^" + re.escape(search_text) + r"(?=\s|[\.\+\-_()]|$)"
+        else:
+            raw_pattern = search_text.replace(" ", r".*[\s\.\+\-_]")
+            prefix_pattern = r"^" + re.escape(search_text).replace(r"\ ", r".*[\s\.\+\-_()]")
 
-    try:
-        regex = re.compile(raw_pattern, flags=re.IGNORECASE)
-        prefix_regex = re.compile(prefix_pattern, flags=re.IGNORECASE)
-    except:
-        return [], "", 0
+        try:
+            regex = re.compile(raw_pattern, flags=re.IGNORECASE)
+            prefix_regex = re.compile(prefix_pattern, flags=re.IGNORECASE)
+        except:
+            return [], 0, 0
 
-    # --- ഫിൽട്ടറുകൾ തയാറാക്കുന്നു ---
+        # --- ഫിൽട്ടറുകൾ തയാറാക്കുന്നു ---
+        if USE_CAPTION_FILTER:
+            prefix_filter = {"$or": [{"file_name": prefix_regex}, {"caption": prefix_regex}]}
+            normal_filter = {
+                "$and": [
+                    {"$or": [{"file_name": regex}, {"caption": regex}]},
+                    {"file_name": {"$not": prefix_regex}},
+                    {"caption": {"$not": prefix_regex}}
+                ]
+            }
+        else:
+            prefix_filter = {"file_name": prefix_regex}
+            normal_filter = {
+                "$and": [
+                    {"file_name": regex},
+                    {"file_name": {"$not": prefix_regex}}
+                ]
+            }
+
+        if file_type:
+            prefix_filter["file_type"] = file_type
+            normal_filter["$and"].append({"file_type": file_type})
+
+        # ആകെ റിസൾട്ടുകളുടെ എണ്ണം കാണാൻ
+        total_prefix = await Media.count_documents(prefix_filter)
+        total_normal = await Media.count_documents(normal_filter)
+        total_results = total_prefix + total_normal
+
+        # ഡാറ്റാബേസ് സെർച്ചിംഗ്
+        prefix_cursor = Media.find(prefix_filter).sort("$natural", -1).skip(offset).limit(max_results)
+        prefix_files = await prefix_cursor.to_list(length=max_results)
+
+        if len(prefix_files) < max_results:
+            remaining = max_results - len(prefix_files)
+            normal_skip = max(0, offset - total_prefix)
+            normal_cursor = Media.find(normal_filter).sort("$natural", -1).skip(normal_skip).limit(remaining)
+            normal_files = await normal_cursor.to_list(length=remaining)
+        else:
+            normal_files = []
+
+        return prefix_files + normal_files, total_results
+
+    # --- ലോജിക് ആരംഭിക്കുന്നു ---
     
-    # 1. മുൻഗണന നൽകേണ്ട ഫിൽട്ടർ (തുടക്കത്തിൽ വാക്കുള്ളവ)
-    if USE_CAPTION_FILTER:
-        prefix_filter = {"$or": [{"file_name": prefix_regex}, {"caption": prefix_regex}]}
-    else:
-        prefix_filter = {"file_name": prefix_regex}
+    # 1. ആദ്യം യൂസർ നൽകിയ അതേ വാക്ക് വെച്ച് തിരയുന്നു (उदा: bhramem)
+    files, total_results = await execute_search(cleaned_query)
+    
+    # 2. റിസൾട്ട് ഒന്നും കിട്ടിയില്ലെങ്കിൽ മാത്രം അക്ഷരങ്ങൾ ഓരോന്നായി കുറച്ച് തിരയുന്നു
+    if not files and cleaned_query:
+        current_query = cleaned_query
+        # വാക്കിന് കുറഞ്ഞത് 3 അക്ഷരമെങ്കിലും ഉണ്ടാകണം (വളരെ ചെറുതായാൽ തെറ്റായ റിസൾട്ട് വരും)
+        while len(current_query) > 3:
+            current_query = current_query[:-1] # അവസാനത്തെ ഒരു അക്ഷരം കളയുന്നു (bhramem -> bhrame -> bhram)
+            files, total_results = await execute_search(current_query)
+            
+            if files: # റിസൾട്ട് ലഭിക്കുകയാണെങ്കിൽ ലൂപ്പ് നിർത്തുന്നു
+                break
 
-    # 2. സാധാരണ ഫിൽട്ടർ (ഇടയിൽ വാക്കുള്ളവ - തുടക്കത്തിലുള്ളവ ഒഴിവാക്കുന്നു)
-    if USE_CAPTION_FILTER:
-        normal_filter = {
-            "$and": [
-                {"$or": [{"file_name": regex}, {"caption": regex}]},
-                {"file_name": {"$not": prefix_regex}},
-                {"caption": {"$not": prefix_regex}}
-            ]
-        }
-    else:
-        normal_filter = {
-            "$and": [
-                {"file_name": regex},
-                {"file_name": {"$not": prefix_regex}}
-            ]
-        }
-
-    if file_type:
-        prefix_filter["file_type"] = file_type
-        # normal_filter ഒരു $and ആയതുകൊണ്ട് അതിലേക്ക് file_type പുഷ് ചെയ്യുന്നു
-        normal_filter["$and"].append({"file_type": file_type})
-
-    # ആകെ റിസൾട്ടുകളുടെ എണ്ണം കാണാൻ (രണ്ട് ഫിൽട്ടറിലെയും തുക)
-    total_prefix = await Media.count_documents(prefix_filter)
-    total_normal = await Media.count_documents(normal_filter)
-    total_results = total_prefix + total_normal
-
+    # നെക്സ്റ്റ് ഓഫ്സെറ്റ് കണക്കാക്കുന്നു
     next_offset = offset + max_results
     if next_offset > total_results:
         next_offset = ""
-
-    # --- ഡാറ്റാബേസ് സെർച്ചിംഗ് ---
-    
-    # ആദ്യം മുൻഗണനയുള്ള ഫയലുകൾ നോക്കുന്നു
-    prefix_cursor = Media.find(prefix_filter).sort("$natural", -1).skip(offset).limit(max_results)
-    prefix_files = await prefix_cursor.to_list(length=max_results)
-
-    # ലിമിറ്റ് തികഞ്ഞില്ലെങ്കിൽ മാത്രം സാധാരണ ഫയലുകൾ തിരയുന്നു
-    if len(prefix_files) < max_results:
-        remaining = max_results - len(prefix_files)
-        
-        # prefix ഫയലുകൾ കഴിഞ്ഞ് ബാക്കി എത്ര skip ചെയ്യണമെന്ന് കണക്കാക്കുന്നു
-        normal_skip = max(0, offset - total_prefix)
-        
-        normal_cursor = Media.find(normal_filter).sort("$natural", -1).skip(normal_skip).limit(remaining)
-        normal_files = await normal_cursor.to_list(length=remaining)
-    else:
-        normal_files = []
-
-    # രണ്ട് ലിസ്റ്റും ഒന്നിച്ച് ചേർക്കുന്നു (തുടക്കത്തിൽ വാക്കുള്ളവ ആദ്യമുണ്ടാകും)
-    files = prefix_files + normal_files
 
     return files, next_offset, total_results
 
