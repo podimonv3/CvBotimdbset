@@ -183,63 +183,68 @@ async def set_skip_number(bot, message):
 
 
 async def index_files_to_db(lst_msg_id, chat, msg, bot):
+    """എല്ലാ ഫയലുകളും വിഭജിക്കാതെ ഒരൊറ്റ ഡിബിയിലേക്ക് മാക്സിമം സ്പീഡിൽ ഇൻഡെക്സ് ചെയ്യുന്ന ഫങ്ഷൻ"""
     total_files = 0
     duplicate = 0
     errors = 0
     deleted = 0
     no_media = 0
     unsupported = 0
+    
     async with lock:
         try:
             current = temp.CURRENT
             temp.CANCEL = False
             async for message in bot.iter_messages(chat, lst_msg_id, temp.CURRENT):
                 if temp.CANCEL:
-                    await msg.edit(
-                        f"Successfully Cancelled!!\n\nSaved <code>{total_files}</code> files to dataBase!\nDuplicate Files Skipped: <code>{duplicate}</code>\nDeleted Messages Skipped: <code>{deleted}</code>\nNon-Media messages skipped: <code>{no_media + unsupported}</code>(Unsupported Media - `{unsupported}` )\nErrors Occurred: <code>{errors}</code>"
-                    )
+                    await msg.edit(f"Successfully Cancelled!!\n\nSaved <code>{total_files}</code> files to dataBase!\nDuplicate Files Skipped: <code>{duplicate}</code>\nDeleted Messages Skipped: <code>{deleted}</code>\nNon-Media messages skipped: <code>{no_media + unsupported}</code>(Unsupported Media - `{unsupported}` )\nErrors Occurred: <code>{errors}</code>")
                     break
+                    
                 current += 1
-                if current % 20 == 0:
-                    can = [
-                        [InlineKeyboardButton("Cancel", callback_data="index_cancel")]
-                    ]
+                if current % 200 == 0:
+                    can = [[InlineKeyboardButton('Cancel', callback_data='index_cancel')]]
                     reply = InlineKeyboardMarkup(can)
-                    await msg.edit_text(
-                        text=f"Total messages fetched: <code>{current}</code>\nTotal messages saved: <code>{total_files}</code>\nDuplicate Files Skipped: <code>{duplicate}</code>\nDeleted Messages Skipped: <code>{deleted}</code>\nNon-Media messages skipped: <code>{no_media + unsupported}</code>(Unsupported Media - `{unsupported}` )\nErrors Occurred: <code>{errors}</code>",
-                        reply_markup=reply,
-                    )
+                    try:
+                        await msg.edit_text(
+                            text=f"Total messages fetched: <code>{current}</code>\nTotal messages saved: <code>{total_files}</code>\nDuplicate Files Skipped: <code>{duplicate}</code>\nDeleted Messages Skipped: <code>{deleted}</code>\nNon-Media messages skipped: <code>{no_media + unsupported}</code>(Unsupported Media - `{unsupported}` )\nErrors Occurred: <code>{errors}</code>",
+                            reply_markup=reply
+                        )
+                        await asyncio.sleep(1) # Flood wait വരാതിരിക്കാൻ ചെറിയൊരു ഡിലേ
+                    except FloodWait as e:
+                        await asyncio.sleep(e.value) # Flood wait വന്നാൽ ടെലിഗ്രാം പറയുന്ന അത്രയും സമയം വെയിറ്റ് ചെയ്യും
+                    except Exception as edit_err:
+                        logger.warning(f"Edit text failed: {edit_err}")
+                    
                 if message.empty:
                     deleted += 1
                     continue
                 elif not message.media:
                     no_media += 1
                     continue
-                elif message.media not in [
-                    enums.MessageMediaType.AUDIO,
-                    enums.MessageMediaType.VIDEO,
-                    enums.MessageMediaType.DOCUMENT,
-                ]:
+                elif message.media not in [enums.MessageMediaType.VIDEO, enums.MessageMediaType.AUDIO, enums.MessageMediaType.DOCUMENT]:
                     unsupported += 1
                     continue
+                    
                 media = getattr(message, message.media.value, None)
                 if not media:
                     unsupported += 1
                     continue
+                    
                 media.file_type = message.media.value
                 media.caption = message.caption
                 media.chatID = message.chat.id
-                aynav, vnay = await save_file(media)
+                
+                # check_file ഒഴിവാക്കി, നേരിട്ട് save_file-ലേക്ക് മാറ്റുന്നു
+                aynav, vnay = await save_file(media) 
                 if aynav:
                     total_files += 1
                 elif vnay == 0:
                     duplicate += 1
                 elif vnay == 2:
                     errors += 1
+                    
         except Exception as e:
             logger.exception(e)
-            await msg.edit(f"Error: {e}")
+            await msg.edit(f'Error: {e}')
         else:
-            await msg.edit(
-                f"Successfully saved <code>{total_files}</code> to dataBase!\nDuplicate Files Skipped: <code>{duplicate}</code>\nDeleted Messages Skipped: <code>{deleted}</code>\nNon-Media messages skipped: <code>{no_media + unsupported}</code>(Unsupported Media - `{unsupported}` )\nErrors Occurred: <code>{errors}</code>"
-            )
+            await msg.edit(f'Succesfully saved <code>{total_files}</code> to dataBase!\nDuplicate Files Skipped: <code>{duplicate}</code>\nDeleted Messages Skipped: <code>{deleted}</code>\nNon-Media messages skipped: <code>{no_media + unsupported}</code>(Unsupported Media - `{unsupported}` )\nErrors Occurred: <code>{errors}</code>')
