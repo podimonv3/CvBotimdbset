@@ -4,7 +4,7 @@ RUN apt update && apt upgrade -y && \
     apt install git -y && \
     rm -rf /var/lib/apt/lists/*
 
-WORKDIR /cvilla-jan23
+WORKDIR /cvbot
 
 # നിങ്ങളുടെ ഗിറ്റ്‌ഹബിലുള്ള എല്ലാ ഫയലുകളും നേരിട്ട് കോപ്പി ചെയ്യുന്നു
 COPY . .
