@@ -34,7 +34,14 @@ BUTTONS = {}
 SPELL_CHECK = {}
 
 DELETE_TIME = int(environ.get("DELETE_TIME", 600))
+_MAX_DICT_SIZE = 250
 
+def _trim_dict(d: dict):
+    """Remove oldest 20% of entries when dict exceeds max size."""
+    if len(d) > _MAX_DICT_SIZE:
+        keys_to_remove = list(d.keys())[:len(d) // 5]
+        for k in keys_to_remove:
+            d.pop(k, None)
 
 @Client.on_message(filters.group & filters.text & filters.incoming)
 async def give_filter(client, message):
@@ -793,106 +800,53 @@ async def auto_filter(client, msg, spoll=False):
 
         
 
-async def advantage_spell_chok(msg):
-    text = (msg.text or "").strip()
-    if not text: return
-
-    query = re.sub(
-        r"\b(?:please|pls|plz|send|snd|give|giv|gib|movie|movies|new|latest|bro|bruh|hello|helo|malayalam|mal|tamil|file|that|find|undo|kitti|kittumo|tharumo|full\s+movie|anyone|with\s+subtitles?)\b",
-        " ", text, flags=re.IGNORECASE
+async def advantage_spell_chok(client, msg):
+    mv_id = msg.id
+    mv_rqst = msg.text
+    reqstr1 = msg.from_user.id if msg.from_user else 0
+    cleaned_query = re.sub(
+        r"\b(pl(i|e)*?(s|z+|ease|se|ese|(e+)s(e)?)|((send|snd|giv(e)?|gib)(\sme)?)|movie(s)?|new|latest|"
+        r"br((o|u)h?)*|^h(e|a)?(l)*(o)*|mal(ayalam)?|t(h)?amil|file|that|find|und(o)*|"
+        r"kit(t(i|y)?)?o(w)?|thar(u)?(o)*w?|kittum(o)*|aya(k)*(um(o)*)?|full\smovie|"
+        r"any(one)|with\ssubtitle(s)?)",
+        "", msg.text, flags=re.IGNORECASE
     )
-    query = re.sub(r"\s+", " ", query).strip()
-    searches = list(dict.fromkeys([q for q in [f"{query} movie" if query else "", text] if q]))
+    cleaned_query = cleaned_query.strip()
 
-    g_s = []
-    for search_query in searches:
-        try:
-            results = await search_gagala(search_query)
-            if results: g_s.extend(results)
-        except Exception as e:
-            print(f"Spell Google search error: {e}")
+    settings = await get_settings(msg.chat.id)
 
-    if not g_s:
-        k = await msg.reply("I couldn't find any movie in that name.")
-        await asyncio.sleep(8)
-        await k.delete()
+    try:
+        movies = await get_poster(cleaned_query, bulk=True)
+    except Exception as e:
+        logger.exception(e)
+        movies = None
+
+    if not movies:
+        await _spell_not_found(msg, mv_rqst)
         return
 
-    gs = [
-        item for item in g_s
-        if re.search(r"\b(?:imdb|wikipedia)\b", item, re.IGNORECASE)
-    ]
-    gs_parsed = [
-        re.sub(
-            r"\b(?:imdb|wikipedia|reviews?|full|all|episodes?|films?|movies?|series)\b|[()|]",
-            " ", item, flags=re.IGNORECASE
-        ).strip(" -_")
-        for item in gs
-    ]
-    gs_parsed = [item for item in gs_parsed if item]
-
-    if not gs_parsed:
-        gs_parsed = [
-            re.sub(r"\s+", " ", item).strip(" -_")
-            for item in g_s
-            if item and len(item.strip()) > 1
-        ]
-
-    gs_parsed = list(dict.fromkeys(gs_parsed))[:3]
-    user = msg.from_user.id if msg.from_user else 0
-    movielist = []
-
-    for mov in gs_parsed:
-        try:
-            imdb_results = await get_poster(mov, bulk=True)
-            if imdb_results:
-                movielist.extend(
-                    movie.get("title") for movie in imdb_results
-                    if movie.get("title")
-                )
-        except Exception as e:
-            print(f"Spell IMDb search error for {mov!r}: {e}")
-
-    movielist.extend(
-        re.sub(r"[-()_]", "", item).strip()
-        for item in gs_parsed if item.strip()
-    )
-    movielist = list(dict.fromkeys(
-        item for item in movielist if item
-    ))[:10]
-
+    movielist = [movie.get('title') for movie in movies]
+    movielist = [title for title in movielist if title]
     if not movielist:
-        k = await msg.reply(
-            "I couldn't find anything related to that. Check your spelling."
-        )
-        await asyncio.sleep(8)
-        await k.delete()
         return
 
-    SPELL_CHECK[msg.id] = movielist
+    SPELL_CHECK[mv_id] = movielist
+    _trim_dict(SPELL_CHECK)
     btn = [
         [InlineKeyboardButton(
-            text=movie[:60],
-            callback_data=f"spolling#{user}#{i}"
+            text=movie_name.strip(),
+            callback_data=f"spol#{reqstr1}#{k}",
         )]
-        for i, movie in enumerate(movielist)
+        for k, movie_name in enumerate(movielist)
     ]
-    btn.append([
-        InlineKeyboardButton(
-            text="Close",
-            callback_data=f"spolling#{user}#close_spellcheck"
-        )
-    ])
-
-    spell_msg = await msg.reply(
-        "I couldn't find anything related to that.\nDid you mean any one of these?",
-        reply_markup=InlineKeyboardMarkup(btn)
+    btn.append([InlineKeyboardButton(text="✘ ᴄʟᴏsᴇ ✘", callback_data=f'spol#{reqstr1}#close_spellcheck')])
+    spell_check_del = await msg.reply_text(
+        text="<b>Sᴘᴇʟʟɪɴɢ Mɪꜱᴛᴀᴋᴇ Bʀᴏ ‼️\n\nᴅᴏɴ'ᴛ ᴡᴏʀʀʏ 😊 Cʜᴏᴏꜱᴇ ᴛʜᴇ ᴄᴏʀʀᴇᴄᴛ ᴏɴᴇ ʙᴇʟᴏᴡ 👇</b>",
+        reply_markup=InlineKeyboardMarkup(btn),
+        reply_to_message_id=msg.id
     )
-    scheduler.add_job(
-        spell_msg.delete,
-        "date",
-        run_date=datetime.now() + timedelta(seconds=DELETE_TIME)
-    )
+    await asyncio.sleep(50)
+    await spell_check_del.delete()
 
 
 
