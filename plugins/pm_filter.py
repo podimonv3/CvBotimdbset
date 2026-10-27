@@ -34,6 +34,7 @@ BUTTONS = {}
 SPELL_CHECK = {}
 
 DELETE_TIME = int(environ.get("DELETE_TIME", 600))
+
 _MAX_DICT_SIZE = 250
 
 def _trim_dict(d: dict):
