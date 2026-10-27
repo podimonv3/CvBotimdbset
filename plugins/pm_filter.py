@@ -35,14 +35,7 @@ SPELL_CHECK = {}
 
 DELETE_TIME = int(environ.get("DELETE_TIME", 600))
 
-_MAX_DICT_SIZE = 250
 
-def _trim_dict(d: dict):
-    """Remove oldest 20% of entries when dict exceeds max size."""
-    if len(d) > _MAX_DICT_SIZE:
-        keys_to_remove = list(d.keys())[:len(d) // 5]
-        for k in keys_to_remove:
-            d.pop(k, None)
 
 @Client.on_message(filters.group & filters.text & filters.incoming)
 async def give_filter(client, message):
@@ -891,7 +884,7 @@ async def advantage_spell_chok(client, msg):
         return
 
     SPELL_CHECK[mv_id] = movielist
-    _trim_dict(SPELL_CHECK)
+    
     btn = [
         [InlineKeyboardButton(
             text=movie_name.strip(),
