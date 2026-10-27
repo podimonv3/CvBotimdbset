@@ -93,54 +93,66 @@ async def save_file(media):
 
 import re
 
+import re
+
 async def get_search_results(query, file_type=None, max_results=10, offset=0, filter=False):
     """
-    For given query return (results, next_offset, total_results)
-    Optimized for low RAM usage on Koyeb and fast MongoDB querying.
+    Returns results sorted by exact prefix match first, then by other matches.
+    Extremely low RAM usage and accurate results.
     """
-
     query = query.strip()
     if not query:
-        raw_pattern = '.'
-    elif ' ' not in query:
-        # ഉപയോക്താവ് നൽകുന്ന പ്രത്യേക ചിഹ്നങ്ങൾ (brackets, dots) കാരണം റീജക്സ് ക്രാഷ് ആവാതിരിക്കാൻ re.escape ഉപയോഗിക്കുന്നു
-        raw_pattern = r'(\b|[\.\+\-_])' + re.escape(query) + r'(\b|[\.\+\-_])'
-    else:
-        # സ്പേസ് ഉള്ള വാക്കുകൾക്ക് വലിയ റാം എടുക്കാത്ത ലളിതമായ പാറ്റേൺ
-        raw_pattern = re.escape(query).replace(r'\ ', r'.*')
+        return [], '', 0
+
+    # ചിഹ്നങ്ങൾ ഒഴിവാക്കി സുരക്ഷിതമായി റീജക്സ് ഉണ്ടാക്കുന്നു
+    escaped_query = re.escape(query)
+    raw_pattern = escaped_query.replace(r'\ ', r'.*')
     
     try:
         regex = re.compile(raw_pattern, flags=re.IGNORECASE)
+        # തുടക്കത്തിൽ തന്നെ ഈ വാക്ക് വരുന്നുണ്ടോ എന്ന് നോക്കാൻ (ഉദാ: ^Bigil)
+        prefix_regex = re.compile(r'^' + escaped_query, flags=re.IGNORECASE)
     except Exception:
         return [], '', 0
 
-    # ക്യാപ്ഷൻ ഫിൽട്ടർ പൂർണ്ണമായി ഒഴിവാക്കി, ഫയലിന്റെ പേര് മാത്രം പരിശോധിക്കുന്നു (Saves huge RAM)
-    filter_dict = {'file_name': regex}
-
+    # അടിസ്ഥാന ഫിൽട്ടർ (പേരിൽ എവിടെയെങ്കിലും വാക്ക് ഉണ്ടായിരിക്കണം)
+    match_filter = {'file_name': regex}
     if file_type:
-        filter_dict['file_type'] = file_type
+        match_filter['file_type'] = file_type
 
-    # ആകെ ഫയലുകളുടെ എണ്ണം എടുക്കുന്നു
-    total_results = await Media.count_documents(filter_dict)
-    next_offset = offset + max_results
+    # 1. ആകെ റിസൾട്ടുകളുടെ എണ്ണം എടുക്കുന്നു
+    total_results = await Media.count_documents(match_filter)
+    
+    # 2. അഗ്രിഗേഷൻ പൈപ്പ്‌ലൈൻ വഴി റാം ലാഭിച്ചു കൊണ്ട് കൃത്യമായ ക്രമത്തിലാക്കുന്നു
+    pipeline = [
+        {'$match': match_filter}, # ആദ്യം ഫയലുകൾ ഫിൽട്ടർ ചെയ്യുന്നു
+        {
+            '$addFields': {
+                # തിരഞ്ഞ വാക്ക് തുടക്കത്തിലുണ്ടെങ്കിൽ 0, അല്ലെങ്കിൽ 1 എന്ന് സ്കോർ നൽകുന്നു
+                'search_score': {
+                    '$cond': [{'$regexMatch': {'input': '$file_name', 'regex': prefix_regex}}, 0, 1]
+                }
+            }
+        },
+        # ആദ്യം സ്കോർ വെച്ചും (തുടക്കത്തിലുള്ളവ ആദ്യം), അതിനുശേഷം പുതിയ ഫയലുകൾ (_id) വെച്ചും അടുക്കുന്നു
+        {'$sort': {'search_score': 1, '_id': -1}},
+        {'$skip': offset},
+        {'$limit': max_results}
+    ]
 
-    if next_offset > total_results:
+    # ക്വറി റൺ ചെയ്യുന്നു
+    cursor = Media.collection.aggregate(pipeline)
+    raw_files = await cursor.to_list(length=max_results)
+
+    # മോംഗോഡിബി ഡോക്യുമെന്റുകളെ പൈത്തൺ ഒബ്‌ജക്റ്റുകളാക്കുന്നു
+    files = [Media.build_from_mongo(doc) for doc in raw_files] if raw_files else []
+
+    next_offset = offset + len(files)
+    if next_offset >= total_results:
         next_offset = ''
 
-    # ഡാറ്റാബേസ് ക്വറി ആരംഭിക്കുന്നു
-    cursor = Media.find(filter_dict)
-    
-    # $natural സോർട്ടിംഗിന് പകരം ഡിഫോൾട്ട് ആയി ഇൻഡെക്സ് ചെയ്യപ്പെട്ടിട്ടുള്ള '_id' വെച്ച് സോർട്ട് ചെയ്യുന്നു.
-    # ഇത് Koyeb-ലെ റാം ഉപയോഗം 90% വരെ കുറയ്ക്കുകയും പുതിയ ഫയലുകൾ ആദ്യം കാണിക്കുകയും ചെയ്യും.
-    cursor.sort('_id', -1)
-    
-    # ഓഫ്‌സെറ്റും ലിമിറ്റും അനുസരിച്ച് ഫയലുകൾ മുറിച്ചെടുക്കുന്നു
-    cursor.skip(offset).limit(max_results)
-    
-    # ആവശ്യമായ ഫയലുകൾ മാത്രം റാമിലേക്ക് ലോഡ് ചെയ്യുന്നു
-    files = await cursor.to_list(length=max_results)
-
     return files, next_offset, total_results
+
 
 
 
