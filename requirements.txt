@@ -9,7 +9,4 @@ bs4
 python-dotenv
 apscheduler
 aiohttp
-beautifulsoup4
-cinemagoer
-httpx
-aiofiles
+imdbpy==2021.4.18
