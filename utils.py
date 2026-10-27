@@ -210,44 +210,36 @@ async def broadcast_messages(user_id, message):
 
 
 
-async def search_gagala(text):
-    text = str(text or "").strip()
-    if not text: return []
 
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9"
-    }
-    url = f"https://www.google.com/search?q={urllib.parse.quote_plus(text)}"
+import asyncio
+import logging
+from googlesearch import search
 
+logger = logging.getLogger(__name__)
+
+def _google_search_titles(query):
     try:
-        async with httpx.AsyncClient(
-            headers=headers,
-            follow_redirects=True,
-            timeout=8.0
-        ) as client:
-            response = await client.get(url)
-            response.raise_for_status()
-
-        soup = BeautifulSoup(response.text, "html.parser")
-        result_titles = []
-        seen = set()
-
-        for title in soup.select("a:has(h3) h3"):
-            name = title.get_text(" ", strip=True)
-            if name and name not in seen:
-                seen.add(name)
-                result_titles.append(name)
-                if len(result_titles) >= 10: break
-
-        return result_titles
-
-    except (httpx.HTTPError, ValueError) as e:
-        print(f"Google search error: {e}")
+        results = search(query, num_results=10, advanced=True)
+        titles = []
+        for result in results:
+            title = getattr(result, "title", None)
+            if title:
+                title = title.strip()
+                if title and title not in titles:
+                    titles.append(title)
+        return titles
+    except Exception:
+        logger.exception("Google search failed for query: %s", query)
         return []
-    except Exception as e:
-        print(f"Google parsing error: {e}")
+
+async def search_gagala(text):
+    query = text.strip() if isinstance(text, str) else ""
+    if not query:
+        return []
+    try:
+        return await asyncio.to_thread(_google_search_titles, query)
+    except Exception:
+        logger.exception("Google search worker failed")
         return []
 
 
