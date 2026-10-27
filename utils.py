@@ -9,7 +9,7 @@ import urllib.parse
 import httpx
 from bs4 import BeautifulSoup
 
-import imdb
+
 import requests
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -27,15 +27,18 @@ from database.join_reqs import JoinReqs as db2
 from database.users_chats_db import db
 from info import ADMINS, AUTH_CHANNEL, LONG_IMDB_DESCRIPTION, MAX_LIST_ELM, REQ_CHANNEL
 
+from imdb import Cinemagoer
+
+logger = logging.getLogger(__name__)
+ia = Cinemagoer()
+
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 BTN_URL_REGEX = re.compile(
     r"(\[([^\[]+?)\]\((buttonurl|buttonalert):(?:/{0,2})(.+?)(:same)?\))"
 )
-
-
-ia = imdb.Cinemagoer()
 
 
 scheduler = AsyncIOScheduler(timezone="UTC")
@@ -100,11 +103,12 @@ async def is_subscribed(bot, query):
 
 
 
-
-async def get_poster(query, bulk=False, id=False, file=None):
+def _get_poster_sync(query, bulk=False, id=False, file=None):
     if not id:
         query = str(query or "").strip()
-        if not query: return None
+        if not query:
+            return None
+
         year = None
         match = re.search(r'\b((?:19|20)\d{2})\s*$', query)
         if match:
@@ -112,45 +116,75 @@ async def get_poster(query, bulk=False, id=False, file=None):
             title = query[:match.start()].strip()
         else:
             title = query
-            if file:
-                match = re.search(r'\b((?:19|20)\d{2})\b', str(file))
-                if match: year = match.group(1)
+            match = re.search(r'\b((?:19|20)\d{2})\b', str(file or ""))
+            if match:
+                year = match.group(1)
+
+        if not title:
+            return None
 
         try:
             results = ia.search_movie(title)
         except Exception:
+            logger.exception("IMDb search failed for %r", title)
             return None
-        if not results: return None
+
+        if not results:
+            return None
 
         filtered = [
             m for m in results
             if m.get("kind") in ("movie", "tv series", "tv mini series")
+        ] or list(results)
+
+        # Prefer exact title matches, then matching year.
+        normalized_title = re.sub(r'\W+', ' ', title).strip().casefold()
+        exact = [
+            m for m in filtered
+            if re.sub(r'\W+', ' ', str(m.get("title") or "")).strip().casefold()
+            == normalized_title
         ]
-        if not filtered: filtered = results
+        if exact:
+            filtered = exact
 
         if year:
-            year_matches = [m for m in filtered if str(m.get("year", "")) == year]
-            if year_matches: filtered = year_matches
+            year_matches = [
+                m for m in filtered
+                if str(m.get("year", "")) == year
+            ]
+            if year_matches:
+                filtered = year_matches
 
-        if bulk: return filtered[:10]
+        if bulk:
+            return filtered[:10]
+
         movieid = str(filtered[0].movieID)
     else:
-        movieid = str(query or "").strip()
-        movieid = re.sub(r'^tt', '', movieid)
-        if not movieid.isdigit(): return None
+        movieid = re.sub(r'^tt', '', str(query or "").strip(), flags=re.I)
+        if not movieid.isdigit():
+            return None
 
     try:
         movie = ia.get_movie(movieid)
         ia.update(movie, info=["main", "plot"])
     except Exception:
+        logger.exception("IMDb details fetch failed for ID %s", movieid)
         return None
+
+    imdb_id = re.sub(
+        r'^tt', '', str(movie.get("imdbID") or movieid), flags=re.I
+    )
+    if not imdb_id.isdigit():
+        imdb_id = movieid
 
     date = movie.get("original air date") or movie.get("year") or "N/A"
     plot = movie.get("plot outline") if LONG_IMDB_DESCRIPTION else movie.get("plot")
-    if isinstance(plot, list): plot = plot[0] if plot else ""
-    if plot and len(plot) > 800: plot = plot[:800] + "..."
+    if isinstance(plot, list):
+        plot = plot[0] if plot else ""
+    if plot and len(plot) > 800:
+        plot = plot[:800] + "..."
 
-    imdb_id = str(movie.get("imdbID") or movieid)
+    poster = movie.get("full-size cover url") or movie.get("cover url")
 
     return {
         "title": movie.get("title"),
@@ -176,12 +210,20 @@ async def get_poster(query, bulk=False, id=False, file=None):
         "release_date": date,
         "year": movie.get("year"),
         "genres": list_to_str(movie.get("genres")),
-        "poster": movie.get("full-size cover url") or movie.get("cover url"),
+        "poster": poster,
         "plot": plot or "",
         "rating": str(movie.get("rating") or ""),
         "url": f"https://www.imdb.com/title/tt{imdb_id}/"
     }
 
+async def get_poster(query, bulk=False, id=False, file=None):
+    try:
+        return await asyncio.to_thread(
+            _get_poster_sync, query, bulk, id, file
+        )
+    except Exception:
+        logger.exception("get_poster failed")
+        return None
 
 
 # https://github.com/odysseusmax/animated-lamp/blob/2ef4730eb2b5f0596ed6d03e7b05243d93e3415b/bot/utils/broadcast.py#L37
