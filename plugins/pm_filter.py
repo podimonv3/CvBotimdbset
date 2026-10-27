@@ -5,7 +5,7 @@ import logging
 import re
 from datetime import datetime, timedelta
 from os import environ
-
+from urllib.parse import quote_plus
 import pyrogram  # For eval(btn)
 from pyrogram import Client, enums, filters
 from pyrogram.errors import (FloodWait, MessageNotModified, PeerIdInvalid,
