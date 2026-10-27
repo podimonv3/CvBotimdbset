@@ -783,82 +783,11 @@ async def auto_filter(client, msg, spoll=False):
         )
     else:
         btn.append([InlineKeyboardButton(text="🗓 1/1", callback_data="pages")])
-    imdb = await get_poster(search, file=files[0].file_name) if settings["imdb"] and files else None
-    TEMPLATE = settings["template"]
-
-    if imdb:
-        try:
-            format_data = locals().copy()
-            format_data.update({
-                "query": search,
-                "title": imdb.get("title") or search,
-                "votes": imdb.get("votes") or "N/A",
-                "aka": imdb.get("aka") or "N/A",
-                "seasons": imdb.get("seasons") or "N/A",
-                "box_office": imdb.get("box_office") or "N/A",
-                "localized_title": imdb.get("localized_title") or "N/A",
-                "kind": imdb.get("kind") or "N/A",
-                "imdb_id": imdb.get("imdb_id") or "N/A",
-                "cast": imdb.get("cast") or "N/A",
-                "runtime": imdb.get("runtime") or "N/A",
-                "countries": imdb.get("countries") or "N/A",
-                "certificates": imdb.get("certificates") or "N/A",
-                "languages": imdb.get("languages") or "N/A",
-                "director": imdb.get("director") or "N/A",
-                "writer": imdb.get("writer") or "N/A",
-                "producer": imdb.get("producer") or "N/A",
-                "composer": imdb.get("composer") or "N/A",
-                "cinematographer": imdb.get("cinematographer") or "N/A",
-                "music_team": imdb.get("music_team") or "N/A",
-                "distributors": imdb.get("distributors") or "N/A",
-                "release_date": imdb.get("release_date") or "N/A",
-                "year": imdb.get("year") or "N/A",
-                "genres": imdb.get("genres") or "N/A",
-                "poster": imdb.get("poster") or "",
-                "plot": imdb.get("plot") or "N/A",
-                "rating": imdb.get("rating") or "N/A",
-                "url": imdb.get("url") or ""
-            })
-            cap = TEMPLATE.format(**format_data)
-        except Exception:
-            logger.exception("IMDb caption template formatting failed")
-            cap = f"Here is what I found for your query {search}"
-    else:
-        cap = f"Here is what I found for your query {search}"
-
-    markup = InlineKeyboardMarkup(btn)
-    poster_url = imdb.get("poster") if imdb else None
-
-    if poster_url:
-        try:
-            await message.reply_photo(
-                photo=poster_url,
-                caption=cap[:1024],
-                reply_markup=markup
-            )
-        except Exception:
-            logger.exception("IMDb poster sending failed; trying text fallback")
-            try:
-                await message.reply_text(
-                    cap[:4000],
-                    reply_markup=markup,
-                    disable_web_page_preview=True
-                )
-            except Exception:
-                logger.exception("IMDb text fallback failed")
-    else:
-        await message.reply_text(
-            cap[:4000],
-            reply_markup=markup,
-            disable_web_page_preview=True
-        )
-
+   
+    cap = f"Here is what i found for your query {search}"
+    await message.reply_text(cap, reply_markup=InlineKeyboardMarkup(btn))
     if spoll:
-        try:
-            await msg.message.delete()
-        except Exception:
-            logger.exception("Failed to delete spell-check message")
-
+        await msg.message.delete()
 
 
 
