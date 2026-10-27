@@ -721,15 +721,7 @@ async def auto_filter(client, msg, spoll=False):
                 search.lower(), offset=0, filter=True
             )
             
-            if not files:
-                # ------------ സിനിമയുടെ പേര് മാത്രം ചാനലിലേക്ക് അയക്കുന്നു ------------
-                try:
-                    # ഇമ്പോർട്ട് ചെയ്ത LOG_CHANNEL-ലേക്ക് സിനിമയുടെ പേര് മാത്രം അയക്കുന്നു
-                    await client.send_message(chat_id=LOG_CHANNEL, text=f"{search}")
-                except Exception as log_error:
-                    print(f"Log Channel Error: {log_error}")
-                # ----------------------------------------------------
-
+            if not files:                
                 reqst_gle = search.replace(" ", "+")              
                 btn_google = InlineKeyboardButton("🔎 𝗖𝗼𝗿𝗿𝗲𝗰𝘁 𝗦𝗽𝗲𝗹𝗹𝗶𝗻𝗴 (𝖦𝗈𝗈𝗀𝗅𝖾) 🔍", url=f"https://www.google.com/search?q={reqst_gle}")
                 google_row = [btn_google]
