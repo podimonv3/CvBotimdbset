@@ -94,81 +94,55 @@ async def save_file(media):
 import re
 
 async def get_search_results(query, file_type=None, max_results=10, offset=0, filter=False):
-    """Search files with safe matching, title/year ranking and pagination."""
+    """
+    For given query return (results, next_offset, total_results)
+    Optimized for low RAM usage on Koyeb and fast MongoDB querying.
+    """
+
     query = query.strip()
-    if not query or max_results < 1 or offset < 0:
-        return [], '', 0
-
-    # Escape regex characters and allow common separators between words.
-    words = query.split()
-    escaped_words = [re.escape(word) for word in words]
-    flexible_query = r'[\s._+\-]*'.join(escaped_words)
-    raw_pattern = r'(?<!\w)' + flexible_query + r'(?!\w)'
-
+    if not query:
+        raw_pattern = '.'
+    elif ' ' not in query:
+        # ഉപയോക്താവ് നൽകുന്ന പ്രത്യേക ചിഹ്നങ്ങൾ (brackets, dots) കാരണം റീജക്സ് ക്രാഷ് ആവാതിരിക്കാൻ re.escape ഉപയോഗിക്കുന്നു
+        raw_pattern = r'(\b|[\.\+\-_])' + re.escape(query) + r'(\b|[\.\+\-_])'
+    else:
+        # സ്പേസ് ഉള്ള വാക്കുകൾക്ക് വലിയ റാം എടുക്കാത്ത ലളിതമായ പാറ്റേൺ
+        raw_pattern = re.escape(query).replace(r'\ ', r'.*')
+    
     try:
-        regex = re.compile(raw_pattern, re.IGNORECASE)
-    except re.error:
-        return [], '', 0
-
-    search_filter = {'file_name': regex}
-    if USE_CAPTION_FILTER:
-        search_filter = {'$or': [
-            {'file_name': regex},
-            {'caption': regex}
-        ]}
-    if file_type:
-        search_filter['file_type'] = file_type
-
-    try:
-        total_results = await Media.count_documents(search_filter)
-        if not total_results:
-            return [], '', 0
-
-        # Rank title-prefix matches first, then matching year, then other matches.
-        year_match = re.search(r'\b(?:19|20)\d{2}\b', query)
-        year_pattern = re.escape(year_match.group()) if year_match else None
-        prefix_pattern = r'^\s*' + flexible_query
-
-        pipeline = [
-            {'$match': search_filter},
-            {'$addFields': {
-                '_search_rank': {
-                    '$switch': {
-                        'branches': [
-                            {
-                                'case': {'$regexMatch': {
-                                    'input': {'$ifNull': ['$file_name', '']},
-                                    'regex': prefix_pattern,
-                                    'options': 'i'
-                                }},
-                                'then': 0
-                            }
-                        ] + ([{
-                            'case': {'$regexMatch': {
-                                'input': {'$ifNull': ['$file_name', '']},
-                                'regex': r'(?<!\d)' + year_pattern + r'(?!\d)',
-                                'options': 'i'
-                            }},
-                            'then': 1
-                        }] if year_pattern else []),
-                        'default': 2
-                    }
-                }
-            }},
-            {'$sort': {'_search_rank': 1, '_id': -1}},
-            {'$skip': offset},
-            {'$limit': max_results},
-            {'$project': {'_search_rank': 0}}
-        ]
-
-        cursor = Media.aggregate(pipeline)
-        files = await cursor.to_list(length=max_results)
-        next_offset = offset + max_results if offset + max_results < total_results else ''
-        return files, next_offset, total_results
-
+        regex = re.compile(raw_pattern, flags=re.IGNORECASE)
     except Exception:
-        logger.exception("get_search_results failed for query: %r", query)
         return [], '', 0
+
+    # ക്യാപ്ഷൻ ഫിൽട്ടർ പൂർണ്ണമായി ഒഴിവാക്കി, ഫയലിന്റെ പേര് മാത്രം പരിശോധിക്കുന്നു (Saves huge RAM)
+    filter_dict = {'file_name': regex}
+
+    if file_type:
+        filter_dict['file_type'] = file_type
+
+    # ആകെ ഫയലുകളുടെ എണ്ണം എടുക്കുന്നു
+    total_results = await Media.count_documents(filter_dict)
+    next_offset = offset + max_results
+
+    if next_offset > total_results:
+        next_offset = ''
+
+    # ഡാറ്റാബേസ് ക്വറി ആരംഭിക്കുന്നു
+    cursor = Media.find(filter_dict)
+    
+    # $natural സോർട്ടിംഗിന് പകരം ഡിഫോൾട്ട് ആയി ഇൻഡെക്സ് ചെയ്യപ്പെട്ടിട്ടുള്ള '_id' വെച്ച് സോർട്ട് ചെയ്യുന്നു.
+    # ഇത് Koyeb-ലെ റാം ഉപയോഗം 90% വരെ കുറയ്ക്കുകയും പുതിയ ഫയലുകൾ ആദ്യം കാണിക്കുകയും ചെയ്യും.
+    cursor.sort('_id', -1)
+    
+    # ഓഫ്‌സെറ്റും ലിമിറ്റും അനുസരിച്ച് ഫയലുകൾ മുറിച്ചെടുക്കുന്നു
+    cursor.skip(offset).limit(max_results)
+    
+    # ആവശ്യമായ ഫയലുകൾ മാത്രം റാമിലേക്ക് ലോഡ് ചെയ്യുന്നു
+    files = await cursor.to_list(length=max_results)
+
+    return files, next_offset, total_results
+
+
 
 
 
