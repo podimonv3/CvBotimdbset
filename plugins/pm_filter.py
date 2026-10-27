@@ -167,32 +167,6 @@ async def next_page(bot, query):
 
 
 
-@Client.on_callback_query(filters.regex(r"^spolling"))
-async def advantage_spoll_choker(bot, query):
-    _, user, movie_ = query.data.split("#")
-    if int(user) != 0 and query.from_user.id != int(user):
-        return await query.answer("okDa", show_alert=True)
-    if movie_ == "close_spellcheck":
-        return await query.message.delete()
-    movies = SPELL_CHECK.get(query.message.reply_to_message_id)
-    if not movies:
-        return await query.answer(
-            "You are clicking on an old button which is expired.", show_alert=True
-        )
-    movie = movies[(int(movie_))]
-    await query.answer("Checking for Movie in database...")
-    k = await manual_filters(bot, query.message, text=movie)
-    if k == False:
-        files, offset, total_results = await get_search_results(
-            movie, offset=0, filter=True
-        )
-        if files:
-            k = (movie, files, offset, total_results)
-            await auto_filter(bot, query, k)
-        else:
-            k = await query.message.edit("This Movie Not Found In DataBase")
-            await asyncio.sleep(10)
-            await k.delete()
 
 
 @Client.on_callback_query()
@@ -479,6 +453,24 @@ async def cb_handler(client: Client, query: CallbackQuery):
         )
     elif query.data == "pages":
         await query.answer()
+        return
+
+    elif query.data == "esp":
+        await query.answer(query, text=script.ENG_SPELL, show_alert=True)
+        
+
+    elif query.data == "msp":
+        await query.answer(query, text=script.MAL_SPELL, show_alert=True)
+        
+
+    elif query.data == "hsp":
+        await query.answer(query, text=script.HIN_SPELL, show_alert=True)
+        
+
+    elif query.data == "tsp":
+        await query.answer(query, text=script.TAM_SPELL, show_alert=True)
+
+  
     elif query.data == "start":
         buttons = [[
             InlineKeyboardButton('➕ Add Me To Your Groups ➕', url=f'http://t.me/{temp.U_NAME}?startgroup=true')
@@ -791,92 +783,33 @@ async def auto_filter(client, msg, spoll=False):
         await msg.message.delete()
 
 
-        
 
-async def advantage_spell_chok(msg):
-    query = re.sub(
-        r"\b(pl(i|e)*?(s|z+|ease|se|ese|(e+)s(e)?)|((send|snd|giv(e)?|gib)(\sme)?)|movie(s)?|new|latest|br((o|u)h?)*|^h(e|a)?(l)*(o)*|mal(ayalam)?|t(h)?amil|file|that|find|und(o)*|kit(t(i|y)?)?o(w)?|thar(u)?(o)*w?|kittum(o)*|aya(k)*(um(o)*)?|full\smovie|any(one)|with\ssubtitle(s)?)",
-        "",
-        msg.text,
-        flags=re.IGNORECASE,
-    )  # plis contribute some common words
-    query = query.strip() + " movie"
-    g_s = await search_gagala(query)
-    g_s += await search_gagala(msg.text)
-    gs_parsed = []
-    if not g_s:
-        k = await msg.reply("I couldn't find any movie in that name.")
-        await asyncio.sleep(8)
-        await k.delete()
-        return
-    regex = re.compile(
-        r".*(imdb|wikipedia).*", re.IGNORECASE
-    )  # look for imdb / wiki results
-    gs = list(filter(regex.match, g_s))
-    gs_parsed = [
-        re.sub(
-            r"\b(\-([a-zA-Z-\s])\-\simdb|(\-\s)?imdb|(\-\s)?wikipedia|\(|\)|\-|reviews|full|all|episode(s)?|film|movie|series)",
-            "",
-            i,
-            flags=re.IGNORECASE,
+async def _spell_not_found(msg, text):
+    """"Not found" reply with language + Google buttons. The query is URL-encoded and capped:
+    raw text with spaces, '&', '#', emoji or a very long message makes Telegram answer BUTTON_URL_INVALID."""
+    query = quote_plus((text or "").strip()[:100])
+    button = [[
+        InlineKeyboardButton('ENG', callback_data='esp'),
+        InlineKeyboardButton('MAL', callback_data='msp'),
+        InlineKeyboardButton('HIN', callback_data='hsp'),
+        InlineKeyboardButton('TAM', callback_data='tsp'),
+    ]]
+    if query:
+        button.append([InlineKeyboardButton('🔍 ɢᴏᴏɢʟᴇ 🔎', url=f"https://www.google.com/search?q={query}")])
+    try:
+        k = await msg.reply_text(
+            text=script.SPOLL_NOT_FND,
+            reply_markup=InlineKeyboardMarkup(button),
+            reply_to_message_id=msg.id
         )
-        for i in gs
-    ]
-    if not gs_parsed:
-        reg = re.compile(
-            r"watch(\s[a-zA-Z0-9_\s\-\(\)]*)*\|.*", re.IGNORECASE
-        )  # match something like Watch Niram | Amazon Prime
-        for mv in g_s:
-            match = reg.match(mv)
-            if match:
-                gs_parsed.append(match.group(1))
-    user = msg.from_user.id if msg.from_user else 0
-    movielist = []
-    gs_parsed = list(
-        dict.fromkeys(gs_parsed)
-    )  # removing duplicates https://stackoverflow.com/a/7961425
-    if len(gs_parsed) > 3:
-        gs_parsed = gs_parsed[:3]
-    if gs_parsed:
-        for mov in gs_parsed:
-            imdb_s = await get_poster(
-                mov.strip(), bulk=True
-            )  # searching each keyword in imdb
-            if imdb_s:
-                movielist += [movie.get("title") for movie in imdb_s]
-    movielist += [
-        (re.sub(r"(\-|\(|\)|_)", "", i, flags=re.IGNORECASE)).strip() for i in gs_parsed
-    ]
-    movielist = list(dict.fromkeys(movielist))  # removing duplicates
-    if not movielist:
-        k = await msg.reply(
-            "I couldn't find anything related to that. Check your spelling"
-        )
-        await asyncio.sleep(8)
-        await k.delete()
+    except Exception as e:                       # never let a failed helper message crash the handler
+        logger.warning(f"spell-check not-found reply failed: {e}")
         return
-    SPELL_CHECK[msg.id] = movielist
-    btn = [
-        [
-            InlineKeyboardButton(
-                text=movie.strip(),
-                callback_data=f"spolling#{user}#{k}",
-            )
-        ]
-        for k, movie in enumerate(movielist)
-    ]
-    btn.append(
-        [
-            InlineKeyboardButton(
-                text="Close", callback_data=f"spolling#{user}#close_spellcheck"
-            )
-        ]
-    )
-    __msg = await msg.reply(
-        "I couldn't find anything related to that\nDid you mean any one of these?",
-        reply_markup=InlineKeyboardMarkup(btn),
-    )
-
+    await asyncio.sleep(60)
+    try:
+        await k.delete()
+    except Exception:
+        pass
 
 
 
