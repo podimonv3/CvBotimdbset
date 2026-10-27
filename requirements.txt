@@ -10,5 +10,6 @@ python-dotenv
 apscheduler
 aiohttp
 beautifulsoup4
+cinemagoer
 httpx
 aiofiles
