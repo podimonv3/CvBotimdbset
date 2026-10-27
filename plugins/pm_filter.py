@@ -723,10 +723,32 @@ async def auto_filter(client, msg, spoll=False):
             )
             
             if not files:
-                if settings["spell_check"]:
-                    return await _spell_not_found(msg)
-                else:
-                    return
+                reqst_gle = search.replace(" ", "+")              
+                btn_google = InlineKeyboardButton("🔎 𝗖𝗼𝗿𝗿𝗲𝗰𝘁 𝗦𝗽𝗲𝗹𝗹𝗶𝗻𝗴 (𝖦𝗈𝗈𝗀𝗅𝖾) 🔍", url=f"https://www.google.com/search?q={reqst_gle}")
+                google_row = [btn_google]
+
+                # നിങ്ങൾ ആവശ്യപ്പെട്ട പുതിയ ഭാഷാ ബട്ടണുകൾ ഇവിടെ ചേർത്തു
+                lang_row = [
+                    InlineKeyboardButton('ENG', callback_data='esp'),
+                    InlineKeyboardButton('MAL', callback_data='msp'),
+                    InlineKeyboardButton('HIN', callback_data='hsp'),
+                    InlineKeyboardButton('TAM', callback_data='tsp'),
+                ]
+
+                # രണ്ട് വരികളും ഒന്നിച്ച് കീബോർഡിലേക്ക് ആഡ് ചെയ്തു
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[google_row, lang_row])
+                
+                try:
+                    k = await msg.reply_text(
+                        text=f"<b>❝ 𝖧𝖾𝗒 {msg.from_user.mention} താഴെ ഉള്ള കാര്യങ്ങൾ ശ്രദ്ധിക്കുക ❞\n\n🔹കറക്റ്റ് സ്പെല്ലിംഗിൽ ചോദിക്കുക. (ഇംഗ്ലീഷിൽ മാത്രം)\n\n🔸സിനിമകൾ ഇംഗ്ലീഷിൽ Type ചെയ്ത് മാത്രം ചോദിക്കുക.\n\n🔹OTT റിലീസ് ആകാത്ത സിനിമകൾ ചോദിക്കരുത്.\n\n🔸സിനിമയുടെ പേര് [വർഷം ഭാഷ] ഈ രീതിയിൽ ചോദിക്കുക.\n\n🔹സിനിമ Request ചെയ്യുമ്പോൾ Symbols ഒഴിവാക്കുക. [+:;'*!-&.. etc\n‼ 𝖱𝖾𝗉𝗈റും 𝗍𝗈 𝖺𝖽𝗆𝗂𝗇 ▶ @MCU_ADMIN_V1_BOT</b>", 
+                        reply_markup=keyboard
+                    )                    
+                    # await k.delete()
+                    return       
+                except Exception as e:
+                    return 
+            else:
+                pass  # ഫയലുകൾ ഉണ്ടെങ്കിൽ താഴെയുള്ള കോഡിലേക്ക് പോകും
         else:
             return
     else:
@@ -781,6 +803,7 @@ async def auto_filter(client, msg, spoll=False):
     await message.reply_text(cap, reply_markup=InlineKeyboardMarkup(btn))
     if spoll:
         await msg.message.delete()
+
 
 
 
