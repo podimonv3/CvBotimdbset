@@ -10,8 +10,8 @@ python-dotenv
 apscheduler
 aiohttp
 cinemagoer
-httpx
 beautifulsoup4
-googlesearch-python
+cinemagoer
+imdbio
+httpx
 aiofiles
-imdbinfo
