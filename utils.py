@@ -188,7 +188,7 @@ async def fetch_poster_bytes(url):
         return None
 
 async def _omdb_search(title, year=None, bulk=False):
-    omdb_keys = _parse_api_keys(OMDB_API_KEYS)
+    omdb_keys = _parse_api_keys(OMDB_API_KEY)
     if not omdb_keys:
         return None
     try:
@@ -211,7 +211,7 @@ async def _omdb_search(title, year=None, bulk=False):
     return await _omdb_get_details(results[0]["imdbID"])
 
 async def _omdb_get_details(imdb_id):
-    omdb_keys = _parse_api_keys(OMDB_API_KEYS)
+    omdb_keys = _parse_api_keys(OMDB_API_KEY)
     if not omdb_keys:
         return None
     if isinstance(imdb_id, str) and imdb_id.startswith("omdb_"):
