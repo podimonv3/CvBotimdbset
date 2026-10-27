@@ -90,53 +90,85 @@ async def save_file(media):
 
 
 
+
 import re
 
-
 async def get_search_results(query, file_type=None, max_results=10, offset=0, filter=False):
-    """For given query return (results, next_offset)"""
-
+    """Search files with safe matching, title/year ranking and pagination."""
     query = query.strip()
-    #if filter:
-        #better ?
-        #query = query.replace(' ', r'(\s|\.|\+|\-|_)')
-        #raw_pattern = r'(\s|_|\-|\.|\+)' + query + r'(\s|_|\-|\.|\+)'
-    if not query:
-        raw_pattern = '.'
-    elif ' ' not in query:
-        raw_pattern = r'(\b|[\.\+\-_])' + query + r'(\b|[\.\+\-_])'
-    else:
-        raw_pattern = query.replace(' ', r'.*[\s\.\+\-_]')
-    
+    if not query or max_results < 1 or offset < 0:
+        return [], '', 0
+
+    # Escape regex characters and allow common separators between words.
+    words = query.split()
+    escaped_words = [re.escape(word) for word in words]
+    flexible_query = r'[\s._+\-]*'.join(escaped_words)
+    raw_pattern = r'(?<!\w)' + flexible_query + r'(?!\w)'
+
     try:
-        regex = re.compile(raw_pattern, flags=re.IGNORECASE)
-    except:
-        return []
+        regex = re.compile(raw_pattern, re.IGNORECASE)
+    except re.error:
+        return [], '', 0
 
+    search_filter = {'file_name': regex}
     if USE_CAPTION_FILTER:
-        filter = {'$or': [{'file_name': regex}, {'caption': regex}]}
-    else:
-        filter = {'file_name': regex}
-
+        search_filter = {'$or': [
+            {'file_name': regex},
+            {'caption': regex}
+        ]}
     if file_type:
-        filter['file_type'] = file_type
+        search_filter['file_type'] = file_type
 
-    total_results = await Media.count_documents(filter)
-    next_offset = offset + max_results
+    try:
+        total_results = await Media.count_documents(search_filter)
+        if not total_results:
+            return [], '', 0
 
-    if next_offset > total_results:
-        next_offset = ''
+        # Rank title-prefix matches first, then matching year, then other matches.
+        year_match = re.search(r'\b(?:19|20)\d{2}\b', query)
+        year_pattern = re.escape(year_match.group()) if year_match else None
+        prefix_pattern = r'^\s*' + flexible_query
 
-    cursor = Media.find(filter)
-    # Sort by recent
-    cursor.sort('$natural', -1)
-    # Slice files according to offset and max results
-    cursor.skip(offset).limit(max_results)
-    # Get list of files
-    files = await cursor.to_list(length=max_results)
+        pipeline = [
+            {'$match': search_filter},
+            {'$addFields': {
+                '_search_rank': {
+                    '$switch': {
+                        'branches': [
+                            {
+                                'case': {'$regexMatch': {
+                                    'input': {'$ifNull': ['$file_name', '']},
+                                    'regex': prefix_pattern,
+                                    'options': 'i'
+                                }},
+                                'then': 0
+                            }
+                        ] + ([{
+                            'case': {'$regexMatch': {
+                                'input': {'$ifNull': ['$file_name', '']},
+                                'regex': r'(?<!\d)' + year_pattern + r'(?!\d)',
+                                'options': 'i'
+                            }},
+                            'then': 1
+                        }] if year_pattern else []),
+                        'default': 2
+                    }
+                }
+            }},
+            {'$sort': {'_search_rank': 1, '_id': -1}},
+            {'$skip': offset},
+            {'$limit': max_results},
+            {'$project': {'_search_rank': 0}}
+        ]
 
-    return files, next_offset, total_results
+        cursor = Media.aggregate(pipeline)
+        files = await cursor.to_list(length=max_results)
+        next_offset = offset + max_results if offset + max_results < total_results else ''
+        return files, next_offset, total_results
 
+    except Exception:
+        logger.exception("get_search_results failed for query: %r", query)
+        return [], '', 0
 
 
 
