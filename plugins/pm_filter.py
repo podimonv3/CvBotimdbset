@@ -712,7 +712,7 @@ async def auto_filter(client, msg, spoll=False):
             search = re.sub(r"['‘’]", "", search)
             
             # 3. Replace special characters, symbols, and brackets with a space
-            search = re.sub(r"""[-–—\\_,#&@!?/( )\[\]":\.¡%“”]""", " ", search)
+            search = re.sub(r"""[–—\\_,#&=+₹@!?/( )\[\]":.¡%“”-]""", " ", search)
             
             # 4. Normalize all regular and Unicode white spaces into a single space
             search = re.sub(r'[\s\u00a0\u2000-\u200a\u202f\u205f\u3000]+', ' ', search)
