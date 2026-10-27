@@ -22,7 +22,7 @@ from database.connections_mdb import (active_connection, all_connections,
 from database.filters_mdb import del_all, find_filter, get_filters
 from database.ia_filterdb import Media, get_file_details, get_search_results
 from database.users_chats_db import db
-from info import ADMINS, AUTH_CHANNEL, CUSTOM_FILE_CAPTION, REQ_CHANNEL
+from info import ADMINS, AUTH_CHANNEL, CUSTOM_FILE_CAPTION, REQ_CHANNEL, LOG_CHANNEL
 from Script import script
 from utils import (get_poster, get_settings, get_size, is_subscribed,
                    save_group_settings, scheduler, search_gagala, temp)
@@ -722,6 +722,14 @@ async def auto_filter(client, msg, spoll=False):
             )
             
             if not files:
+                # ------------ സിനിമയുടെ പേര് മാത്രം ചാനലിലേക്ക് അയക്കുന്നു ------------
+                try:
+                    # ഇമ്പോർട്ട് ചെയ്ത LOG_CHANNEL-ലേക്ക് സിനിമയുടെ പേര് മാത്രം അയക്കുന്നു
+                    await client.send_message(chat_id=LOG_CHANNEL, text=f"{search}")
+                except Exception as log_error:
+                    print(f"Log Channel Error: {log_error}")
+                # ----------------------------------------------------
+
                 reqst_gle = search.replace(" ", "+")              
                 btn_google = InlineKeyboardButton("🔎 𝗖𝗼𝗿𝗿𝗲𝗰𝘁 𝗦𝗽𝗲𝗹𝗹𝗶𝗻𝗴 (𝖦𝗈𝗈𝗀𝗅𝖾) 🔍", url=f"https://www.google.com/search?q={reqst_gle}")
                 google_row = [btn_google]
