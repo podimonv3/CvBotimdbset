@@ -29,11 +29,13 @@ from info import ADMINS, AUTH_CHANNEL, LONG_IMDB_DESCRIPTION, MAX_LIST_ELM, REQ_
 
 # Safely import optional third-party modules
 try:
-    import imdbio as _imdbio
-    from imdbio.exceptions import ImdbioError as _ImdbioError
+    import imdb as _imdbio
+    # cinemagoer-ൽ സാധാരണ എററുകൾ കൈകാര്യം ചെയ്യുന്നത് ഇങ്ങനെയാണ്:
+    from imdb import IMDbError as _ImdbioError
     IMDBIO_AVAILABLE = True
 except ImportError:
     IMDBIO_AVAILABLE = False
+
 
 
 logger = logging.getLogger(__name__)
