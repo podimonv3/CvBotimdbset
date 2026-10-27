@@ -9,9 +9,7 @@ bs4
 python-dotenv
 apscheduler
 aiohttp
-cinemagoer
 beautifulsoup4
-cinemagoer
 imdbio
 httpx
 aiofiles
