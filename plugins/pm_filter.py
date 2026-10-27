@@ -795,7 +795,8 @@ async def auto_filter(client, msg, spoll=False):
 
 async def advantage_spell_chok(client, msg):
     mv_id, mv_rqst = msg.id, msg.text
-    reqstr1 = msg.from_user.id if msg.from_user else 0
+    user_id = msg.from_user.id if msg.from_user else 0
+    
     cleaned_query = re.sub(
         r"\b(pl(i|e)\*?(s|z+|ease|se|ese|(e+)s(e)?)|((send|snd|giv(e)?|gib)(\sme)?)|movie(s)?|new|latest|"
         r"br((o|u)h?)\*|^h(e|a)?(l)\*(o)\*|mal(ayalam)?|t(h)?amil|file|that|find|und(o)\*|"
@@ -803,10 +804,10 @@ async def advantage_spell_chok(client, msg):
         "", msg.text, flags=re.IGNORECASE
     ).strip()
 
-    # 📝 ഇൻലൈൻ ബട്ടണുകൾ സെറ്റ് ചെയ്യുന്നു
+    # ഗൂഗിൾ ബട്ടൺ സെറ്റ് ചെയ്യുന്നു
     reqst_gle = quote_plus(mv_rqst)
     google_button = [
-        [InlineKeyboardButton("🔎 𝗖𝗼𝗿𝗿𝗲𝗰𝘁 𝗦𝗽𝗲𝗹𝗹𝗶𝗻𝗴 (𝖦𝗈𝗈𝗀𝗅𝖾)", url=f"https://t.me/+JApRVtkGwUhmNzI9")],
+        [InlineKeyboardButton("🔎 𝗖𝗼𝗿𝗿𝗲𝗰𝘁 𝗦𝗽𝗲𝗹𝗹𝗶𝗻𝗴 (𝖦𝗈𝗈𝗀𝗅𝖾)", url=f"https://google.com{reqst_gle}")],
         [InlineKeyboardButton("📜 Rᴜʟᴇs", url="https://t.me/+JApRVtkGwUhmNzI9"), InlineKeyboardButton("📥 Rᴇqᴜᴇsᴛ", url="https://t.me/+JApRVtkGwUhmNzI9")]
     ]
 
@@ -816,6 +817,7 @@ async def advantage_spell_chok(client, msg):
         logger.error(f"Get poster error: {e}")
         movies = None
 
+    # സിനിമകൾ ഒന്നും ലഭിച്ചില്ലെങ്കിൽ
     if not movies:
         try:
             await msg.reply_text(
@@ -850,34 +852,25 @@ async def advantage_spell_chok(client, msg):
     if not movielist:
         return
 
-    # 🟢 Callback Handler-ലേക്ക് ഡാറ്റ കൈമാറാൻ SPELL_CHECK നിഘണ്ടുവിലേക്ക് ലിസ്റ്റ് മാറ്റുന്നു
-    # പരമാവധി 10 സിനിമകൾ മാത്രം എടുക്കുന്നു
-    final_movielist = movielist[:10]
-    SPELL_CHECK[msg.id] = final_movielist
+    # 🟢 Callback ഹാൻഡ്‌ലറിന് വേണ്ടി ഡാറ്റ ഗ്ലോബൽ ഡിക്ഷണറിയിലേക്ക് മാറ്റുന്നു
+    # ഇവിടെ മെസ്സേജ് ഐഡി കീ (Key) ആയാണ് സൂക്ഷിക്കുന്നത്
+    SPELL_CHECK[msg.id] = movielist[:10]
 
-    # 🟢 സജഷനുകളെ ബട്ടൺ രൂപത്തിലേക്ക് മാറ്റുന്നു
-    # നിങ്ങളുടെ callback format: spolling#user_id#movie_index
+    # സജഷനുകൾ ഇൻലൈൻ ബട്ടണുകളാക്കുന്നു (spolling#{user_id}#{index} രൂപത്തിൽ)
     suggestion_buttons = []
-    for index, movie_name in enumerate(final_movielist):
+    for index, movie_name in enumerate(movielist[:10]):
         suggestion_buttons.append([
-            InlineKeyboardButton(text=movie_name, callback_data=f"spolling#{reqstr1}#{index}")
+            InlineKeyboardButton(text=movie_name, callback_data=f"spolling#{user_id}#{index}")
         ])
 
-    # ക്ലോസ് ബട്ടൺ കൂടി സജഷന്റെ കൂടെ ചേർക്കുന്നു
-    suggestion_buttons.append([
-        InlineKeyboardButton(text="🗑 Close", callback_data=f"spolling#{reqstr1}#close_spellcheck")
-    ])
-
-    # ഗൂഗിൾ ബട്ടണും റൂൾസ് ബട്ടണും താഴെ ചേർക്കുന്നു
     final_buttons = suggestion_buttons + google_button
 
-    # 📝 ടെക്സ്റ്റ് മെസ്സേജ് സെറ്റ് ചെയ്യുന്നു
     spell_list_text = script.NO_TXT + "\n"
     spell_list_text += "<u><b>SUGGESTIONS 👇</b></u>\n\n"
     spell_list_text += "<i>താഴെ നൽകിയിരിക്കുന്ന ബട്ടണുകളിൽ ക്ലിക്ക് ചെയ്ത് സിനിമ സെർച്ച് ചെയ്യാവുന്നതാണ്.</i>"
 
     try:
-        spell_check_del = await msg.reply_text(
+        await msg.reply_text(
             text=spell_list_text,
             reply_markup=InlineKeyboardMarkup(final_buttons),
             reply_to_message_id=msg.id,
@@ -886,6 +879,7 @@ async def advantage_spell_chok(client, msg):
         )
     except Exception:
         return
+
 
 
 
