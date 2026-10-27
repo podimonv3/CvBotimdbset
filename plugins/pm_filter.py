@@ -714,8 +714,12 @@ async def auto_filter(client, msg, spoll=False):
             # 3. Replace special characters, symbols, and brackets with a space
             search = re.sub(r"""[–—\\_,#&=+₹@!?/( )\[\]":.¡%“”-]""", " ", search)
             
-            # 4. Normalize all regular and Unicode white spaces into a single space
-            search = re.sub(r'[\s\u00a0\u2000-\u200a\u202f\u205f\u3000]+', ' ', search)
+            # 4. ഒഴിവാക്കേണ്ട വാക്കുകൾ ഇവിടെ വെച്ച് മാറ്റുന്നു (ഇത് കാരണം ഉണ്ടാകുന്ന പുതിയ സ്പേസുകളും താഴെ ക്ലീൻ ചെയ്യപ്പെടും)
+            words_to_remove = r'\b(malayalm|movie|movies|full|Malyalm|Mlylm|hd|download|mp4|mkv|bluray|rip|link|subtile)\b'
+            search = re.sub(words_to_remove, '', search, flags=re.IGNORECASE)
+            
+            # 5. എല്ലാത്തരം അധിക സ്പേസുകളും ഒരൊറ്റ തവണ ഇവിടെ വെച്ച് ക്ലീൻ ചെയ്യുന്നു
+            search = re.sub(r'[\s\u00a0\u2000-\u200a\u202f\u205f\u3000]+', ' ', search).strip()
             
             files, offset, total_results = await get_search_results(
                 search.lower(), offset=0, filter=True
