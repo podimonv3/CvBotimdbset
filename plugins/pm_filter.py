@@ -173,7 +173,7 @@ async def next_page(bot, query):
 
 
 
-@Client.on_callback_query(filters.regex(r"^spolling"))
+@Client.on_callback_query(filters.regex(r"^spol"))
 async def advantage_spoll_choker(bot, query):
     _, user, movie_ = query.data.split("#")
     if int(user) != 0 and query.from_user.id != int(user):
@@ -790,12 +790,69 @@ async def auto_filter(client, msg, spoll=False):
         )
     else:
         btn.append([InlineKeyboardButton(text="🗓 1/1", callback_data="pages")])
-   
-    cap = f"Here is what i found for your query {search}"
-    await message.reply_text(cap, reply_markup=InlineKeyboardMarkup(btn))
+    imdb = (
+        await get_poster(search, file=(files[0]).file_name)
+        if settings["imdb"]
+        else None
+    )
+    TEMPLATE = settings["template"]
+    if imdb:
+        cap = TEMPLATE.format(
+            query=search,
+            title=imdb["title"],
+            votes=imdb["votes"],
+            aka=imdb["aka"],
+            seasons=imdb["seasons"],
+            box_office=imdb["box_office"],
+            localized_title=imdb["localized_title"],
+            kind=imdb["kind"],
+            imdb_id=imdb["imdb_id"],
+            cast=imdb["cast"],
+            runtime=imdb["runtime"],
+            countries=imdb["countries"],
+            certificates=imdb["certificates"],
+            languages=imdb["languages"],
+            director=imdb["director"],
+            writer=imdb["writer"],
+            producer=imdb["producer"],
+            composer=imdb["composer"],
+            cinematographer=imdb["cinematographer"],
+            music_team=imdb["music_team"],
+            distributors=imdb["distributors"],
+            release_date=imdb["release_date"],
+            year=imdb["year"],
+            genres=imdb["genres"],
+            poster=imdb["poster"],
+            plot=imdb["plot"],
+            rating=imdb["rating"],
+            url=imdb["url"],
+            **locals(),
+        )
+    else:
+        cap = f"Here is what i found for your query {search}"
+    __msg = None
+    if imdb and imdb.get("poster"):
+        try:
+            __msg = await message.reply_photo(
+                photo=imdb.get("poster"),
+                caption=cap[:1024],
+                reply_markup=InlineKeyboardMarkup(btn),
+            )
+        except (MediaEmpty, PhotoInvalidDimensions, WebpageMediaEmpty):
+            pic = imdb.get("poster")
+            poster = pic.replace(".jpg", "._V1_UX360.jpg")
+            __msg = await message.reply_photo(
+                photo=poster, caption=cap[:1024], reply_markup=InlineKeyboardMarkup(btn)
+            )
+        except Exception as e:
+            logger.exception(e)
+            __msg = await message.reply_text(
+                cap, reply_markup=InlineKeyboardMarkup(btn)
+            )
+    else:
+        __msg = await message.reply_text(cap, reply_markup=InlineKeyboardMarkup(btn))
     if spoll:
         await msg.message.delete()
-
 
 
         
@@ -822,7 +879,9 @@ async def advantage_spell_chok(client, msg):
         movies = None
 
     if not movies:
-        await _spell_not_found(msg, mv_rqst)
+        k = await msg.reply(
+            "I couldn't find anything related to that. Check your spelling"
+        )
         return
 
     movielist = [movie.get('title') for movie in movies]
