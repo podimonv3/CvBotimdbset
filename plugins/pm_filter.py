@@ -784,7 +784,7 @@ async def auto_filter(client, msg, spoll=False):
 
 
 
-async def _spell_not_found(msg, text):
+async def _spell_not_found(msg):
     """"Not found" reply with language + Google buttons. The query is URL-encoded and capped:
     raw text with spaces, '&', '#', emoji or a very long message makes Telegram answer BUTTON_URL_INVALID."""
     query = quote_plus((text or "").strip()[:100])
