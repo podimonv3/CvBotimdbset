@@ -93,108 +93,47 @@ async def save_file(media):
 import re
 
 
-async def get_search_results(
-    query, file_type=None, max_results=10, offset=0, filter=False
-):
+async def get_search_results(query, file_type=None, max_results=10, offset=0, filter=False):
     """For given query return (results, next_offset)"""
 
-    # 1. യൂസർ അയക്കുന്ന ടെക്സ്റ്റിലെ ചിഹ്നങ്ങളും സ്പെഷ്യൽ ക്യാരക്ടറുകളും നീക്കം ചെയ്യുന്നു
-    cleaned_query = re.sub(r"[^\w\s]", "", query)
-    cleaned_query = re.sub(r"\s+", " ", cleaned_query).strip()
-
-    # എറർ വരാതിരിക്കാൻ നിങ്ങളുടെ പഴയ ലോജിക് അതേപടി ഒരു ഹെൽപർ ഫംഗ്ഷൻ ആക്കുന്നു
-    async def run_database_query(raw_pat, pref_pat):
-        try:
-            regex = re.compile(raw_pat, flags=re.IGNORECASE)
-            prefix_regex = re.compile(pref_pat, flags=re.IGNORECASE)
-        except:
-            return [], 0
-
-        # --- ഫിൽട്ടറുകൾ തയാറാക്കുന്നു ---
-        if USE_CAPTION_FILTER:
-            prefix_filter = {"$or": [{"file_name": prefix_regex}, {"caption": prefix_regex}]}
-            normal_filter = {
-                "$and": [
-                    {"$or": [{"file_name": regex}, {"caption": regex}]},
-                    {"file_name": {"$not": prefix_regex}},
-                    {"caption": {"$not": prefix_regex}}
-                ]
-            }
-        else:
-            prefix_filter = {"file_name": prefix_regex}
-            normal_filter = {
-                "$and": [
-                    {"file_name": regex},
-                    {"file_name": {"$not": prefix_regex}}
-                ]
-            }
-
-        if file_type:
-            prefix_filter["file_type"] = file_type
-            normal_filter["$and"].append({"file_type": file_type})
-
-        # ആകെ റിസൾട്ടുകളുടെ എണ്ണം കാണാൻ
-        total_prefix = await Media.count_documents(prefix_filter)
-        total_normal = await Media.count_documents(normal_filter)
-        total_results = total_prefix + total_normal
-
-        # ഡാറ്റാബേസ് സെർച്ചിംഗ്
-        prefix_cursor = Media.find(prefix_filter).sort("$natural", -1).skip(offset).limit(max_results)
-        prefix_files = await prefix_cursor.to_list(length=max_results)
-
-        if len(prefix_files) < max_results:
-            remaining = max_results - len(prefix_files)
-            normal_skip = max(0, offset - total_prefix)
-            normal_cursor = Media.find(normal_filter).sort("$natural", -1).skip(normal_skip).limit(remaining)
-            normal_files = await normal_cursor.to_list(length=remaining)
-        else:
-            normal_files = []
-
-        return prefix_files + normal_files, total_results
-
-    # --- ലോജിക് ആരംഭിക്കുന്നു ---
-
-    # 1. ആദ്യം യൂസർ നൽകിയ അതേ വാക്ക് വെച്ച് കൃത്യമായി പാറ്റേൺ ഉണ്ടാക്കുന്നു (Exact Match)
-    if not cleaned_query:
-        raw_pattern = "."
-        prefix_pattern = "."
-    elif " " not in cleaned_query:
-        raw_pattern = r"(\b|[\.\+\-_])" + cleaned_query + r"(\b|[\.\+\-_])"
-        prefix_pattern = r"^" + re.escape(cleaned_query) + r"(?=\s|[\.\+\-_()]|$)"
+    query = query.strip()
+    #if filter:
+        #better ?
+        #query = query.replace(' ', r'(\s|\.|\+|\-|_)')
+        #raw_pattern = r'(\s|_|\-|\.|\+)' + query + r'(\s|_|\-|\.|\+)'
+    if not query:
+        raw_pattern = '.'
+    elif ' ' not in query:
+        raw_pattern = r'(\b|[\.\+\-_])' + query + r'(\b|[\.\+\-_])'
     else:
-        raw_pattern = cleaned_query.replace(" ", r".*[\s\.\+\-_]")
-        prefix_pattern = r"^" + re.escape(cleaned_query).replace(r"\ ", r".*[\s\.\+\-_()]")
+        raw_pattern = query.replace(' ', r'.*[\s\.\+\-_]')
+    
+    try:
+        regex = re.compile(raw_pattern, flags=re.IGNORECASE)
+    except:
+        return []
 
-    # ഒന്നാമത്തെ സെർച്ച് റൺ ചെയ്യുന്നു
-    files, total_results = await run_database_query(raw_pattern, prefix_pattern)
+    if USE_CAPTION_FILTER:
+        filter = {'$or': [{'file_name': regex}, {'caption': regex}]}
+    else:
+        filter = {'file_name': regex}
 
-    # 2. റിസൾട്ട് ഒന്നും കിട്ടിയില്ലെങ്കിൽ മാത്രം അക്ഷരങ്ങൾ ഓരോന്നായി കുറച്ച് വൈൽഡ്കാർഡ് വഴി തിരയുന്നു
-    if not files and cleaned_query:
-        current_query = cleaned_query
-        
-        # സുരക്ഷ മുൻനിർത്തി വാക്കിന്റെ ആകെ നീളം 4-ൽ കൂടുതൽ ആണെങ്കിൽ മാത്രം വെട്ടുക
-        while len(current_query) > 4:
-            current_query = current_query[:-1] # അവസാനത്തെ ഒരക്ഷരം കളയുന്നു
-            
-            if " " not in current_query:
-                # വാക്കിന് ശേഷം മറ്റ് അക്ഷരങ്ങൾ വരാൻ പാകത്തിന് .*? ചേർക്കുന്നു
-                raw_pattern = r"(\b|[\.\+\-_])" + re.escape(current_query) + r".*?(\b|[\.\+\-_]|$)"
-                prefix_pattern = r"^" + re.escape(current_query)
-            else:
-                # പല വാക്കുകൾ ഉണ്ടെങ്കിൽ അവസാന വാക്കിന് ശേഷം .* ചേർക്കുന്നു
-                raw_pattern = current_query.replace(" ", r".*[\s\.\+\-_]") + r".*"
-                prefix_pattern = r"^" + re.escape(current_query).replace(r"\ ", r".*[\s\.\+\-_()]") + r".*"
+    if file_type:
+        filter['file_type'] = file_type
 
-            # വീണ്ടും സെർച്ച് റൺ ചെയ്യുന്നു
-            files, total_results = await run_database_query(raw_pattern, prefix_pattern)
-            
-            if files: # ഫയൽ കിട്ടിയാൽ ലൂപ്പ് നിർത്തുന്നു
-                break
-
-    # നെക്സ്റ്റ് ഓഫ്സെറ്റ് കണക്കാക്കുന്നു
+    total_results = await Media.count_documents(filter)
     next_offset = offset + max_results
+
     if next_offset > total_results:
-        next_offset = ""
+        next_offset = ''
+
+    cursor = Media.find(filter)
+    # Sort by recent
+    cursor.sort('$natural', -1)
+    # Slice files according to offset and max results
+    cursor.skip(offset).limit(max_results)
+    # Get list of files
+    files = await cursor.to_list(length=max_results)
 
     return files, next_offset, total_results
 
