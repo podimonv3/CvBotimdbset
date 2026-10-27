@@ -167,7 +167,7 @@ async def next_page(bot, query):
 
 
 
-@Client.on_callback_query(filters.regex(r"^spol"))
+@Client.on_callback_query(filters.regex(r"^spolling"))
 async def advantage_spoll_choker(bot, query):
     _, user, movie_ = query.data.split("#")
     if int(user) != 0 and query.from_user.id != int(user):
@@ -794,54 +794,99 @@ async def auto_filter(client, msg, spoll=False):
         
 
 async def advantage_spell_chok(client, msg):
-    mv_id = msg.id
-    mv_rqst = msg.text
+    mv_id, mv_rqst = msg.id, msg.text
     reqstr1 = msg.from_user.id if msg.from_user else 0
     cleaned_query = re.sub(
-        r"\b(pl(i|e)*?(s|z+|ease|se|ese|(e+)s(e)?)|((send|snd|giv(e)?|gib)(\sme)?)|movie(s)?|new|latest|"
-        r"br((o|u)h?)*|^h(e|a)?(l)*(o)*|mal(ayalam)?|t(h)?amil|file|that|find|und(o)*|"
-        r"kit(t(i|y)?)?o(w)?|thar(u)?(o)*w?|kittum(o)*|aya(k)*(um(o)*)?|full\smovie|"
-        r"any(one)|with\ssubtitle(s)?)",
+        r"\b(pl(i|e)\*?(s|z+|ease|se|ese|(e+)s(e)?)|((send|snd|giv(e)?|gib)(\sme)?)|movie(s)?|new|latest|"
+        r"br((o|u)h?)\*|^h(e|a)?(l)\*(o)\*|mal(ayalam)?|t(h)?amil|file|that|find|und(o)\*|"
+        r"kit(t(i|y)?)?o(w)?|thar(u)?(o)\*w?|kittum(o)\*|aya(k)\*(um(o)\*)?|full\smovie|any(one)|with\ssubtitle(s)?)",
         "", msg.text, flags=re.IGNORECASE
-    )
-    cleaned_query = cleaned_query.strip()
+    ).strip()
 
-    settings = await get_settings(msg.chat.id)
+    # 📝 ഇൻലൈൻ ബട്ടണുകൾ സെറ്റ് ചെയ്യുന്നു
+    reqst_gle = quote_plus(mv_rqst)
+    google_button = [
+        [InlineKeyboardButton("🔎 𝗖𝗼𝗿𝗿𝗲𝗰𝘁 𝗦𝗽𝗲𝗹𝗹𝗶𝗻𝗴 (𝖦𝗈𝗈𝗀𝗅𝖾)", url=f"https://t.me/+JApRVtkGwUhmNzI9")],
+        [InlineKeyboardButton("📜 Rᴜʟᴇs", url="https://t.me/+JApRVtkGwUhmNzI9"), InlineKeyboardButton("📥 Rᴇqᴜᴇsᴛ", url="https://t.me/+JApRVtkGwUhmNzI9")]
+    ]
 
     try:
         movies = await get_poster(cleaned_query, bulk=True)
     except Exception as e:
-        logger.exception(e)
+        logger.error(f"Get poster error: {e}")
         movies = None
 
     if not movies:
-        k = await msg.reply(
-            "I couldn't find anything related to that. Check your spelling"
-        )
+        try:
+            await msg.reply_text(
+                script.SPELL_TEXT.format(msg.from_user.mention),
+                reply_markup=InlineKeyboardMarkup(google_button),
+                reply_to_message_id=msg.id,
+                parse_mode=enums.ParseMode.HTML,
+                disable_web_page_preview=True
+            )
+        except Exception:
+            pass
         return
 
-    movielist = [movie.get('title') for movie in movies]
-    movielist = [title for title in movielist if title]
+    movielist = []
+    for movie in movies:
+        if isinstance(movie, dict):
+            title = movie.get('title')
+            year = movie.get('year')
+        else:
+            title = movie.get('title') if hasattr(movie, 'get') else getattr(movie, 'title', None)
+            year = movie.get('year') if hasattr(movie, 'get') else getattr(movie, 'year', None)
+        
+        if title:
+            if year and str(year) != "N/A":
+                year_str = re.findall(r'\b(19\d{2}|20\d{2})\b', str(year))
+                year_val = f" {year_str[0]}" if year_str else ""
+            else:
+                year_val = ""
+                
+            movielist.append(f"{title.strip()}{year_val}")
+
     if not movielist:
         return
 
-    SPELL_CHECK[mv_id] = movielist
-    
-    btn = [
-        [InlineKeyboardButton(
-            text=movie_name.strip(),
-            callback_data=f"spol#{reqstr1}#{k}",
-        )]
-        for k, movie_name in enumerate(movielist)
-    ]
-    btn.append([InlineKeyboardButton(text="✘ ᴄʟᴏsᴇ ✘", callback_data=f'spol#{reqstr1}#close_spellcheck')])
-    spell_check_del = await msg.reply_text(
-        text="<b>Sᴘᴇʟʟɪɴɢ Mɪꜱᴛᴀᴋᴇ Bʀᴏ ‼️\n\nᴅᴏɴ'ᴛ ᴡᴏʀʀʏ 😊 Cʜᴏᴏꜱᴇ ᴛʜᴇ ᴄᴏʀʀᴇᴄᴛ ᴏɴᴇ ʙᴇʟᴏᴡ 👇</b>",
-        reply_markup=InlineKeyboardMarkup(btn),
-        reply_to_message_id=msg.id
-    )
-    await asyncio.sleep(50)
-    await spell_check_del.delete()
+    # 🟢 Callback Handler-ലേക്ക് ഡാറ്റ കൈമാറാൻ SPELL_CHECK നിഘണ്ടുവിലേക്ക് ലിസ്റ്റ് മാറ്റുന്നു
+    # പരമാവധി 10 സിനിമകൾ മാത്രം എടുക്കുന്നു
+    final_movielist = movielist[:10]
+    SPELL_CHECK[msg.id] = final_movielist
+
+    # 🟢 സജഷനുകളെ ബട്ടൺ രൂപത്തിലേക്ക് മാറ്റുന്നു
+    # നിങ്ങളുടെ callback format: spolling#user_id#movie_index
+    suggestion_buttons = []
+    for index, movie_name in enumerate(final_movielist):
+        suggestion_buttons.append([
+            InlineKeyboardButton(text=movie_name, callback_data=f"spolling#{reqstr1}#{index}")
+        ])
+
+    # ക്ലോസ് ബട്ടൺ കൂടി സജഷന്റെ കൂടെ ചേർക്കുന്നു
+    suggestion_buttons.append([
+        InlineKeyboardButton(text="🗑 Close", callback_data=f"spolling#{reqstr1}#close_spellcheck")
+    ])
+
+    # ഗൂഗിൾ ബട്ടണും റൂൾസ് ബട്ടണും താഴെ ചേർക്കുന്നു
+    final_buttons = suggestion_buttons + google_button
+
+    # 📝 ടെക്സ്റ്റ് മെസ്സേജ് സെറ്റ് ചെയ്യുന്നു
+    spell_list_text = script.NO_TXT + "\n"
+    spell_list_text += "<u><b>SUGGESTIONS 👇</b></u>\n\n"
+    spell_list_text += "<i>താഴെ നൽകിയിരിക്കുന്ന ബട്ടണുകളിൽ ക്ലിക്ക് ചെയ്ത് സിനിമ സെർച്ച് ചെയ്യാവുന്നതാണ്.</i>"
+
+    try:
+        spell_check_del = await msg.reply_text(
+            text=spell_list_text,
+            reply_markup=InlineKeyboardMarkup(final_buttons),
+            reply_to_message_id=msg.id,
+            parse_mode=enums.ParseMode.HTML,
+            disable_web_page_preview=True
+        )
+    except Exception:
+        return
+
 
 
 
