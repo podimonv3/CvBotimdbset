@@ -453,23 +453,22 @@ async def cb_handler(client: Client, query: CallbackQuery):
         )
     elif query.data == "pages":
         await query.answer()
-        return
 
     elif query.data == "esp":
-        await query.answer(query, text=script.ENG_SPELL, show_alert=True)
-        
-
+        await query.answer(text=script.ENG_SPELL, show_alert=True)
+    
     elif query.data == "msp":
-        await query.answer(query, text=script.MAL_SPELL, show_alert=True)
-        
-
+        await query.answer(text=script.MAL_SPELL, show_alert=True)
+    
     elif query.data == "hsp":
-        await query.answer(query, text=script.HIN_SPELL, show_alert=True)
+        await query.answer(text=script.HIN_SPELL, show_alert=True)
+    
+    elif query.data == "tsp":
+        await query.answer(text=script.TAM_SPELL, show_alert=True)
+
         
 
-    elif query.data == "tsp":
-        await query.answer(query, text=script.TAM_SPELL, show_alert=True)
-
+    
   
     elif query.data == "start":
         buttons = [[
