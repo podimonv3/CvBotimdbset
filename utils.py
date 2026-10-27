@@ -4,8 +4,6 @@ import os
 import re
 from datetime import datetime
 from typing import List, Union
-from imdbinfo import search_title as imdbinfo_search_title, get_movie as imdbinfo_get_movie, TitleType
-
 import urllib.parse
 import httpx
 from bs4 import BeautifulSoup
@@ -27,6 +25,15 @@ from pyrogram.types import InlineKeyboardButton, Message
 from database.join_reqs import JoinReqs as db2
 from database.users_chats_db import db
 from info import ADMINS, AUTH_CHANNEL, LONG_IMDB_DESCRIPTION, MAX_LIST_ELM, REQ_CHANNEL, OMDB_API_KEY
+
+
+# Safely import optional third-party modules
+try:
+    import imdbio as _imdbio
+    from imdbio.exceptions import ImdbioError as _ImdbioError
+    IMDBIO_AVAILABLE = True
+except ImportError:
+    IMDBIO_AVAILABLE = False
 
 
 logger = logging.getLogger(__name__)
@@ -97,131 +104,7 @@ async def is_subscribed(bot, query):
             return False
 
 
-
-class _ImdbioFakeMovie:
-    """Wraps an imdbinfo MovieBriefInfo search result to match Cinemagoer's object interface."""
-    def __init__(self, m):
-        self._m = m
-        # m.imdb_id already carries the 'tt' prefix, e.g. 'tt0133093'
-        self.movieID = f"imdbio_{m.imdb_id}"
-    def get(self, k, default=None):
-        _map = {'title': 'title', 'year': 'year', 'kind': 'kind'}
-        return getattr(self._m, _map.get(k, k), default)
-
-
-def _first_attr(obj, *names, default=None):
-    """Return first present, non-None attribute from a list of possible names."""
-    for n in names:
-        v = getattr(obj, n, None)
-        if v is not None:
-            return v
-    return default
-
-
-def _cat_names(movie, key):
-    """Pull a job-category (writer/producer/composer/...) name list off a MovieDetail, if present."""
-    categories = getattr(movie, "categories", None) or {}
-    people = categories.get(key, [])
-    return list_to_str([getattr(p, "name", str(p)) for p in people]) if people else "N/A"
-
-
-async def _imdbio_search(title, year=None, bulk=False, _retry=True):
-    """Search imdb via imdbinfo (no API key needed). Falls back to OMDb on block/failure."""
-    try:
-        year_int = int(year) if year else None
-        result = await asyncio.to_thread(
-            imdbinfo_search_title,
-            title,
-            year_int,
-            False,
-            None,
-            (TitleType.Movies, TitleType.Series),
-        )
-    except Exception as e:
-        if "403" in str(e) and _retry:
-            # blocked, back off once then fall through to OMDb
-            await asyncio.sleep(1.5)
-            return await _imdbio_search(title, year, bulk, _retry=False)
-        logger.warning(f"imdbinfo search failed for '{title}': {e}, falling back to OMDb")
-        return await _omdb_search(title, year, bulk)
-
-    if not result or not result.titles:
-        return await _omdb_search(title, year, bulk)
-    if bulk:
-        return [_ImdbioFakeMovie(t) for t in result.titles[:10]]
-    # fetch full details for top result
-    imdb_id = result.titles[0].imdb_id
-    return await _imdbio_get_details(imdb_id) if imdb_id else await _omdb_search(title, year, bulk)
-
-
-
-
-async def _imdbio_get_details(imdb_id):
-    """Fetch full details via imdbinfo by IMDb ID (accepts with or without 'tt' prefix)."""
-    try:
-        movie = await asyncio.to_thread(imdbinfo_get_movie, imdb_id)
-    except Exception as e:
-        logger.warning(f"imdbinfo details failed for '{imdb_id}': {e}, falling back to OMDb")
-        return await _omdb_get_details(imdb_id)
-    if not movie:
-        return await _omdb_get_details(imdb_id)
-
-    plot = getattr(movie, "plot", None) or "N/A"
-    if not LONG_IMDB_DESCRIPTION and plot and len(plot) > 800:
-        plot = plot[:800] + "..."
-    kind = "tv series" if movie.is_series() else "movie"
-    seasons = None
-    info_series = getattr(movie, "info_series", None)
-    if info_series and getattr(info_series, "display_seasons", None):
-        seasons = len(info_series.display_seasons)
-    box_office_raw = _first_attr(movie, "box_office", default={}) or {}
-    box_office = (box_office_raw.get("grossWorldwide") if isinstance(box_office_raw, dict) else None) \
-        or _first_attr(movie, "worldwide_gross", default="N/A")
-    duration = _first_attr(movie, "duration", "runtime")
-    runtime = f"{duration} min" if duration else "N/A"
-
-    cast_list = _first_attr(movie, "stars", "cast", default=[]) or []
-    directors_list = _first_attr(movie, "directors", "director", default=[]) or []
-    genres_list = _first_attr(movie, "genres", default=[]) or []
-    countries_list = _first_attr(movie, "countries", default=[]) or []
-    languages_list = _first_attr(movie, "languages_text", "languages", default=[]) or []
-    akas_list = _first_attr(movie, "title_akas", "akas", default=[]) or []
-
-    return {
-        'title': getattr(movie, "title", None) or "N/A",
-        'votes': _first_attr(movie, "votes", "vote_count", default="N/A"),
-        "aka": list_to_str(akas_list),
-        "seasons": seasons,
-        "box_office": box_office,
-        'localized_title': getattr(movie, "title_localized", None) or getattr(movie, "title", None) or "N/A",
-        'kind': kind,
-        "imdb_id": getattr(movie, "imdb_id", None) or "N/A",
-        "cast": list_to_str([getattr(p, "name", str(p)) for p in cast_list]) if cast_list else "N/A",
-        "runtime": runtime,
-        "countries": list_to_str(countries_list),
-        "certificates": _first_attr(movie, "certificate", "certificates", default="N/A"),
-        "languages": list_to_str(languages_list),
-        "director": list_to_str([getattr(p, "name", str(p)) for p in directors_list]) if directors_list else "N/A",
-        "writer": _cat_names(movie, "writer"),
-        "producer": _cat_names(movie, "producer"),
-        "composer": _cat_names(movie, "composer"),
-        "cinematographer": _cat_names(movie, "cinematographer"),
-        "music_team": _cat_names(movie, "music_department"),
-        "distributors": "N/A",
-        'release_date': getattr(movie, "release_date", None) or str(getattr(movie, "year", None) or "N/A"),
-        'year': getattr(movie, "year", None) if getattr(movie, "year", None) is not None else "N/A",
-        'genres': list_to_str(genres_list),
-        'poster': _hq_poster(_first_attr(movie, "cover_url", "poster_url", "poster")),
-        'plot': plot,
-        'rating': str(movie.rating) if getattr(movie, "rating", None) is not None else "N/A",
-        'url': getattr(movie, "url", None) or f"https://www.imdb.com/title/{getattr(movie, 'imdb_id', imdb_id)}/",
-        '_source': 'imdbinfo',
-    }
-
-
-
 class _OmdbFakeMovie:
-    """Wraps an OMDb search-result dict to match Cinemagoer's object interface."""
     def __init__(self, m):
         self._m = m
         self.movieID = f"omdb_{m.get('imdbID')}"
@@ -229,114 +112,129 @@ class _OmdbFakeMovie:
         _map = {'title': 'Title', 'year': 'Year', 'kind': 'Type'}
         return self._m.get(_map.get(k, k), default)
 
+class _ImdbioFakeMovie:
+    def __init__(self, m):
+        self._m = m
+        self.movieID = f"imdbio_{m.imdb_id}"
+    def get(self, k, default=None):
+        if k == 'title': return self._m.title or default
+        if k == 'year': return self._m.year or default
+        if k == 'kind': return self._m.kind or default
+        return default
 
-def _hq_poster(url):
-    """OMDb poster URLs point at Amazon's image CDN with a size-limiting suffix
-    like '...@._V1_SX300.jpg'. Stripping '._V1_SX300' leaves '...@.jpg' = the original, full-res image."""
-    if not url or url == "N/A":
-        return None
-    return re.sub(r'\._V1_[^/]*?(?=\.\w+$)', '', url)
+def list_to_str(k, max_elm=None):
+    if not k:
+        return "N/A"
+    limit = int(max_elm or MAX_LIST_ELM or 5)
+    if len(k) > limit:
+        k = k[:limit]
+    return ', '.join(str(elem) for elem in k)
 
+def _names(people):
+    try:
+        names = [p.name for p in people if getattr(p, "name", None)]
+    except (TypeError, AttributeError):
+        return "N/A"
+    return list_to_str(names) if names else "N/A"
 
-async def _omdb_search(title, year=None, bulk=False):
-    """Search movies/shows via OMDb."""
-    if not OMDB_API_KEY:
-        logger.warning("OMDB_API_KEY not set, cannot search OMDb")
+def _cat(m, key):
+    try:
+        return _names(m.categories.get(key, []))
+    except (AttributeError, TypeError):
+        return "N/A"
+
+async def _imdbio_search(title, year=None, bulk=False):
+    if not IMDBIO_AVAILABLE:
         return None
     try:
-        params = {"apikey": OMDB_API_KEY, "s": title}
+        result = await asyncio.to_thread(_imdbio.search_title, title, year=year)
+    except Exception:
+        return None
+    if not result or not result.titles:
+        return None
+    if bulk:
+        return [{"title": t.title, "year": str(t.year) if t.year else "N/A"} for t in result.titles[:6]]
+    return await _imdbio_get_details(result.titles[0].imdb_id)
+
+async def _imdbio_get_details(imdb_id):
+    if not IMDBIO_AVAILABLE:
+        return None
+    if isinstance(imdb_id, str) and imdb_id.startswith("imdbio_"):
+        imdb_id = imdb_id[len("imdbio_"):]
+    try:
+        m = await asyncio.to_thread(_imdbio.get_movie, imdb_id)
+    except Exception:
+        return None
+    if not m:
+        return None
+    return {"title": m.title or "N/A", "year": str(m.year) if m.year else "N/A"}
+
+def _hq_poster(url):
+    if not url or url == "N/A":
+        return None
+    return re.sub(r'\._[A-Z0-9,]+_(?=\.\w+$)', '', url)
+
+async def fetch_poster_bytes(url):
+    if not url:
+        return None
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"}
+    try:
+        async with httpx.AsyncClient(timeout=15, headers=headers, follow_redirects=True) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            return resp.content
+    except Exception as e:
+        logger.warning(f"poster download failed: {e}")
+        return None
+
+async def _omdb_search(title, year=None, bulk=False):
+    omdb_keys = _parse_api_keys(OMDB_API_KEYS)
+    if not omdb_keys:
+        return None
+    try:
+        params = {"apikey": omdb_keys[0], "s": title}
         if year:
             params["y"] = year
         async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get("https://www.omdbapi.com/", params=params)
+            resp = await client.get("https://omdbapi.com", params=params)
             resp.raise_for_status()
             data = resp.json()
-    except Exception as e:
-        logger.exception(f"omdb search error: {e}")
+    except Exception:
         return None
-
     if data.get("Response") != "True":
         return None
     results = data.get("Search", [])
     if not results:
         return None
     if bulk:
-        return [_OmdbFakeMovie(r) for r in results[:10]]
+        return [{"title": r.get("Title"), "year": r.get("Year") or "N/A"} for r in results[:6]]
     return await _omdb_get_details(results[0]["imdbID"])
 
-
-
 async def _omdb_get_details(imdb_id):
-    """Fetch full details via OMDb by IMDb ID."""
-    if not OMDB_API_KEY:
+    omdb_keys = _parse_api_keys(OMDB_API_KEYS)
+    if not omdb_keys:
         return None
     if isinstance(imdb_id, str) and imdb_id.startswith("omdb_"):
         imdb_id = imdb_id[len("omdb_"):]
     try:
-        params = {"apikey": OMDB_API_KEY, "i": imdb_id, "plot": "full" if LONG_IMDB_DESCRIPTION else "short"}
+        params = {"apikey": omdb_keys[0], "i": imdb_id, "plot": "short"}
         async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get("https://www.omdbapi.com/", params=params)
+            resp = await client.get("https://omdbapi.com", params=params)
             resp.raise_for_status()
             m = resp.json()
-    except Exception as e:
-        logger.exception(f"omdb details error: {e}")
+    except Exception:
         return None
     if not m or m.get("Response") != "True":
         return None
-
-    plot = m.get("Plot") or "N/A"
-    if not LONG_IMDB_DESCRIPTION and plot and len(plot) > 800:
-        plot = plot[:800] + "..."
-
-    def _split(field):
-        v = m.get(field)
-        if not v or v == "N/A":
-            return "N/A"
-        return list_to_str([p.strip() for p in v.split(",")])
-
-    return {
-        'title': m.get("Title", "N/A"),
-        'votes': m.get("imdbVotes", "N/A"),
-        "aka": "N/A",
-        "seasons": m.get("totalSeasons"),
-        "box_office": m.get("BoxOffice", "N/A"),
-        'localized_title': m.get("Title", "N/A"),
-        'kind': "tv series" if m.get("Type") == "series" else "movie",
-        "imdb_id": m.get("imdbID", "N/A"),
-        "cast": _split("Actors"),
-        "runtime": m.get("Runtime", "N/A"),
-        "countries": _split("Country"),
-        "certificates": m.get("Rated", "N/A"),
-        "languages": _split("Language"),
-        "director": _split("Director"),
-        "writer": _split("Writer"),
-        "producer": "N/A",
-        "composer": "N/A",
-        "cinematographer": "N/A",
-        "music_team": "N/A",
-        "distributors": "N/A",
-        'release_date': m.get("Released", "N/A"),
-        'year': m.get("Year", "N/A"),
-        'genres': _split("Genre"),
-        'poster': _hq_poster(m.get("Poster")),
-        'plot': plot,
-        'rating': m.get("imdbRating", "N/A"),
-        'url': f"https://www.imdb.com/title/{m.get('imdbID')}/" if m.get("imdbID") else "N/A",
-        '_source': 'omdb',
-    }
+    return {"title": m.get("Title", "N/A"), "year": m.get("Year", "N/A")}
 
 
 async def get_poster(query, bulk=False, id=False, file=None):
-    # ── Direct ID lookups ────────────────────────────────────────────────────
     if id:
-        if isinstance(query, str) and query.startswith("omdb_"):
-            return await _omdb_get_details(query[len("omdb_"):])
-        imdb_id = query
-        if isinstance(query, str) and query.startswith("imdbio_"):
-            imdb_id = query[len("imdbio_"):]  # strip "imdbio_" prefix
-        return await _imdbio_get_details(imdb_id)
+        result = await _imdbio_get_details(query)
+        if result: return result
+        return await _omdb_get_details(query)
 
-    # ── Parse title + year ───────────────────────────────────────────────────
     query = (query.strip()).lower()
     title = query
     year = re.findall(r'[1-2]\d{3}$', query, re.IGNORECASE)
@@ -350,30 +248,9 @@ async def get_poster(query, bulk=False, id=False, file=None):
     else:
         year = None
 
-    return await _imdbio_search(title, year=year, bulk=bulk)
-
-async def broadcast_messages(user_id, message):
-    try:
-        await message.copy(chat_id=user_id)
-        return True, "Success"
-    except FloodWait as e:
-        await asyncio.sleep(e.value)
-        return await broadcast_messages(user_id, message)
-    except InputUserDeactivated:
-        await db.delete_user(int(user_id))
-        logging.info(f"{user_id}-Removed from Database, since deleted account.")
-        return False, "Deleted"
-    except UserIsBlocked:
-        logging.info(f"{user_id} -Blocked the bot.")
-        return False, "Blocked"
-    except PeerIdInvalid:
-        await db.delete_user(int(user_id))
-        logging.info(f"{user_id} - PeerIdInvalid")
-        return False, "Error"
-    except Exception as e:
-        return False, "Error"
-
-
+    result = await _imdbio_search(title, year=year, bulk=bulk)
+    if result: return result
+    return await _omdb_search(title, year=year, bulk=bulk)
 
 
 async def search_gagala(text):
