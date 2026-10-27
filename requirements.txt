@@ -10,6 +10,5 @@ python-dotenv
 apscheduler
 aiohttp
 beautifulsoup4
-imdbio
 httpx
 aiofiles
