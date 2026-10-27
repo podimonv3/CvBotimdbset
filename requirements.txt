@@ -12,3 +12,4 @@ aiohttp
 cinemagoer
 httpx
 beautifulsoup4
+googlesearch-python
