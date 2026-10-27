@@ -724,7 +724,7 @@ async def auto_filter(client, msg, spoll=False):
             
             if not files:
                 if settings["spell_check"]:
-                    return await advantage_spell_chok(msg)
+                    return await _spell_not_found(msg)
                 else:
                     return
         else:
