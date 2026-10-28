@@ -167,19 +167,18 @@ async def next_page(bot, query):
 
 
 
+import re  # ഫയലിന്റെ മുകളിൽ ഉണ്ടെന്ന് ഉറപ്പാക്കുക
+
 @Client.on_callback_query(filters.regex(r"^spolling"))
 async def advantage_spoll_choker(bot, query):
     _, user, movie_ = query.data.split('#')
     
-    # മെസ്സേജ് അയച്ച ആൾ തന്നെയാണോ ബട്ടൺ ക്ലിക്ക് ചെയ്തത് എന്ന് നോക്കുന്നു
     if int(user) != 0 and query.from_user.id != int(user):
         return await query.answer("ഇത് നിങ്ങളുടെ സെർച്ച് റിസൾട്ട് അല്ല! ⚠️", show_alert=True)
         
-    # ക്ലോസ് ബട്ടൺ ക്ലിക്ക് ചെയ്താൽ മെസ്സേജ് ഡിലീറ്റ് ചെയ്യും
     if movie_ == "close_spellcheck":
         return await query.message.delete()
         
-    # ഡിക്‌ഷ്ണറിയിൽ നിന്നും ലിസ്റ്റ് എടുക്കുന്നു
     movies = SPELL_CHECK.get(query.message.reply_to_message.id)
     if not movies:
         return await query.answer("നിങ്ങൾ പഴയൊരു ബട്ടണിലാണ് ക്ലിക്ക് ചെയ്തത്. ഇത് കാലഹരണപ്പെട്ടു! ❌", show_alert=True)
@@ -189,26 +188,30 @@ async def advantage_spoll_choker(bot, query):
     except (IndexError, ValueError):
         return await query.answer("എന്തോ തകരാർ സംഭവിച്ചു. വീണ്ടും ശ്രമിക്കുക! ❌", show_alert=True)
         
-    # 🗑️ ഒരേ ബട്ടണിൽ വീണ്ടും ക്ലിക്ക് ചെയ്യുന്നത് തടയാൻ ബട്ടൺ മെസ്സേജ് ഉടൻ തന്നെ ഡിലീറ്റ് ചെയ്യുന്നു
     try:
         await query.message.delete()
     except Exception:
         pass
 
     await query.answer('Checking for Movie in database...')
-    
-    # നിങ്ങളുടെ ബോട്ടിന്റെ ഫിൽട്ടർ ലോജിക് പ്രവർത്തിക്കുന്നു
-    k = await manual_filters(bot, query.message, text=movie)
+
+    # 🛠️ സിനിമയുടെ പേര് ഡാറ്റാബേസിന് അനുയോജ്യമായ രീതിയിൽ ക്ലീൻ ചെയ്യുന്നു
+    # ഇത് ബ്രാക്കറ്റുകൾ, ചിഹ്നങ്ങൾ ([, ], ', :, -) എന്നിവ മാറ്റി പകരം സിംഗിൾ സ്പേസ് നൽകും
+    clean_movie_name = re.sub(r"[^\w\s]", " ", movie)
+    # ഒന്നിലധികം സ്പേസുകൾ തുടർച്ചയായി വന്നാൽ അത് മാറ്റി ഒറ്റ സ്പേസ് ആക്കുന്നു
+    clean_movie_name = re.sub(r"\s+", " ", clean_movie_name).strip()
+
+    # 🔍 ക്ലീൻ ചെയ്ത പേര് ഉപയോഗിച്ചാണ് ഇനി ഡാറ്റാബേസിൽ തിരയുന്നത്
+    k = await manual_filters(bot, query.message, text=clean_movie_name)
     if k == False:
-        files, offset, total_results = await get_search_results(movie, offset=0, filter=True)
+        files, offset, total_results = await get_search_results(clean_movie_name, offset=0, filter=True)
         if files:
-            k = (movie, files, offset, total_results)
+            k = (clean_movie_name, files, offset, total_results)
             await auto_filter(bot, query, k)
         else:
-            # സിനിമ ഡാറ്റാബേസിൽ ഇല്ലെങ്കിൽ പുതിയൊരു ടെക്സ്റ്റ് മെസ്സേജ് അയക്കുന്നു (പഴയത് ഡിലീറ്റ് ആയതുകൊണ്ട് edit ചെയ്യാൻ പറ്റില്ല)
             k = await bot.send_message(
                 chat_id=query.message.chat.id,
-                text=f"<b>{movie}</b> Not Found In DataBase ❌",
+                text=f"<b>{clean_movie_name}</b> Not Found In DataBase ❌",
                 reply_to_message_id=query.message.reply_to_message.id
             )
             await asyncio.sleep(10)
