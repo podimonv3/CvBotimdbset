@@ -914,158 +914,84 @@ def _spell_variants(query, limit=8):
                 return variants
     return variants
 
-async def advantage_spell_chok(msg):
-    query = re.sub(
-        r"\b(movie|movies|please|plz|send|file|find|latest|full movie|with subtitles?)\b",
-        " ", msg.text or "", flags=re.IGNORECASE
-    )
-    query = re.sub(r"\s+", " ", query).strip()
-    if not query:
-        return
 
-    candidates = {}
-
-    def add_candidate(title, year=None):
-        if not title:
-            return
-        title = str(title).strip()
-        if not title:
-            return
-        year_match = re.search(r"\b(19\d{2}|20\d{2})\b", str(year or ""))
-        year_value = year_match.group(1) if year_match else ""
-        key = _spell_normalize(title)
-        if not key:
-            return
-        label = f"{title} {year_value}".strip()
-        if key not in candidates:
-            candidates[key] = {
-                "title": title,
-                "year": year_value,
-                "label": label
-            }
-        elif year_value and not candidates[key]["year"]:
-            candidates[key]["year"] = year_value
-            candidates[key]["label"] = label
-
-    async def search_tmdb(term):
-        try:
-            result = await get_poster(term, bulk=True)
-            if result:
-                for item in result:
-                    if isinstance(item, dict):
-                        add_candidate(item.get("title"), item.get("year"))
-        except Exception:
-            pass
-
-    async def search_omdb(client, term):
-        if not OMDB_API_KEY:
-            return
-        try:
-            response = await client.get(
-                "https://www.omdbapi.com/",
-                params={
-                    "apikey": OMDB_API_KEY,
-                    "s": term,
-                    "type": "movie"
-                },
-                timeout=5.0
-            )
-            data = response.json()
-            if data.get("Response") == "True":
-                for item in data.get("Search", []):
-                    add_candidate(item.get("Title"), item.get("Year"))
-        except Exception:
-            pass
+async def advantage_spell_chok(client, msg):
+    mv_id, mv_rqst = msg.id, msg.text
+    reqstr1 = msg.from_user.id if msg.from_user else 0
+    cleaned_query = re.sub(
+        r"\b(pl(i|e)\*?(s|z+|ease|se|ese|(e+)s(e)?)|((send|snd|giv(e)?|gib)(\sme)?)|movie(s)?|new|latest|"
+        r"br((o|u)h?)\*|^h(e|a)?(l)\*(o)\*|mal(ayalam)?|t(h)?amil|file|that|find|und(o)\*|"
+        r"kit(t(i|y)?)?o(w)?|thar(u)?(o)\*w?|kittum(o)\*|aya(k)\*(um(o)\*)?|full\smovie|any(one)|with\ssubtitle(s)?)",
+        "", msg.text, flags=re.IGNORECASE
+    ).strip()    
+    reqst_gle = quote_plus(mv_rqst)
+    google_button = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔎 𝗖𝗼𝗿𝗿𝗲𝗰𝘁 𝗦𝗽𝗲𝗹𝗹𝗶𝗻𝗴 (𝖦𝗈𝗈𝗀𝗅𝖾)", url=f"https://www.google.com/search?q={reqst_gle}")],
+        [InlineKeyboardButton("📜 Rᴜʟᴇs", url="https://t.me/Chithralokham/7"), InlineKeyboardButton("📥 Rᴇqᴜᴇsᴛ", url="https://t.me/+9Hn9bM-OK5RiM2Y1")]
+    ])
 
     try:
-        # ആദ്യം original query ഉപയോഗിച്ച് TMDB + OMDb search
-        await search_tmdb(query)
+        # സിനിമയുടെ വിവരങ്ങൾ എടുക്കാൻ മാത്രം get_poster ഉപയോഗിക്കുന്നു (പോസ്റ്റർ ഇമേജ് ഡൗൺലോഡ് ചെയ്യില്ല)
+        movies = await get_posters(cleaned_query, bulk=True)
+    except Exception:
+        movies = None
 
-        async with httpx.AsyncClient() as client:
-            await search_omdb(client, query)
-
-            # Results കുറവാണെങ്കിൽ typo variations ഉപയോഗിച്ച് വീണ്ടും search
-            if len(candidates) < 5:
-                variants = _spell_variants(query, limit=6)
-                for variant in variants:
-                    await search_tmdb(variant)
-                    await search_omdb(client, variant)
-                    if len(candidates) >= 20:
-                        break
-
-        if not candidates:
-            try:
-                await msg.reply_text(
-                    script.SPELL_TEXT.format(msg.from_user.mention),
-                    reply_markup=google_button,
-                    reply_to_message_id=msg.id,
-                    parse_mode=enums.ParseMode.HTML,
-                    disable_web_page_preview=True
-                )
-            except Exception:
-                pass
-            return
-
-        normalized_query = _spell_normalize(query)
-        query_words = set(re.findall(r"[a-z0-9]+", query.casefold()))
-
-        def score(item):
-            title = item["title"]
-            normalized_title = _spell_normalize(title)
-            title_words = set(re.findall(r"[a-z0-9]+", title.casefold()))
-            similarity = SequenceMatcher(
-                None, normalized_query, normalized_title
-            ).ratio()
-            if normalized_title == normalized_query:
-                similarity += 1.0
-            elif normalized_query in normalized_title or normalized_title in normalized_query:
-                similarity += 0.25
-            if query_words and title_words:
-                similarity += 0.25 * (
-                    len(query_words & title_words) / len(query_words)
-                )
-            return similarity
-
-        ranked = sorted(candidates.values(), key=score, reverse=True)
-        movielist = []
-        seen = set()
-
-        for item in ranked:
-            label = item["label"]
-            key = _spell_normalize(label)
-            if key and key not in seen:
-                seen.add(key)
-                movielist.append(label)
-            if len(movielist) >= 10:
-                break
-
-        if not movielist:
-            return
-
-        spell_list_text = script.NO_TXT + "\n"
-        spell_list_text += "<u><b>SUGGESTIONS 👇</b></u>\n\n"
-        for index, movie_name in enumerate(movielist, start=1):
-            safe_name = (
-                movie_name.replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
+    if not movies:
+        try:
+            await msg.reply_text(
+                script.SPELL_TEXT.format(msg.from_user.mention),
+                reply_markup=google_button,
+                reply_to_message_id=msg.id,
+                parse_mode=enums.ParseMode.HTML,
+                disable_web_page_preview=True
             )
-            spell_list_text += f"<b>{index}.</b> <code>{safe_name}</code>\n"
+        except Exception:
+            pass
+        return
 
-        # നിലവിലെ callback-ന് ഉപയോഗിക്കാനായി suggestions സൂക്ഷിക്കുന്നു
-        SPELL_CHECK[msg.id] = movielist
+    movielist = []
+    for movie in movies:
+        if isinstance(movie, dict):
+            title = movie.get('title')
+            year = movie.get('year')
+        else:
+            title = movie.get('title') if hasattr(movie, 'get') else getattr(movie, 'title', None)
+            year = movie.get('year') if hasattr(movie, 'get') else getattr(movie, 'year', None)
+        
+        if title:
+            if year and str(year) != "N/A":
+                year_str = re.findall(r'\b(19\d{2}|20\d{2})\b', str(year))
+                year_val = f" {year_str[0]}" if year_str else ""
+            else:
+                year_val = ""
+                
+            movielist.append(f"{title.strip()}{year_val}")
 
-        # നിങ്ങളുടെ നിലവിലെ function-ൽ inline keyboard നിർമ്മിക്കുന്ന code
-        # ഉണ്ടെങ്കിൽ അത് ഇവിടെ അതേപടി നിലനിർത്തുക.
-        await msg.reply_text(
-            spell_list_text,
+    if not movielist:
+        return
+
+    # 📝 Heading ചേർക്കുന്നു
+    spell_list_text = script.NO_TXT + "\n"
+    spell_list_text += "<u><b>SUGGESTIONS 👇</b></u>\n\n"
+    
+    # സജഷനുകൾ HTML-ൽ ബോൾഡ് ആയി ലിസ്റ്റ് ചെയ്യുന്നു (പരമാവധി 10 എണ്ണം)
+    for index, movie_name in enumerate(movielist[:10], start=1):
+        spell_list_text += f"<b>{index}.</b> <code>{movie_name}</code>\n"
+
+    # 📥 ഫോട്ടോ ഇല്ലാതെ വെറും ടെക്സ്റ്റ് മാത്രമായി മറുപടി അയക്കുന്നു
+    try:
+        spell_check_del = await msg.reply_text(
+            text=spell_list_text,
+            reply_markup=google_button,
             reply_to_message_id=msg.id,
             parse_mode=enums.ParseMode.HTML,
             disable_web_page_preview=True
         )
+    except Exception:
+        return
 
-    except Exception as e:
-        logger.exception("Spell suggestion failed: %s", e)
+
+            
 
   
 async def manual_filters(client, message, text=False):
