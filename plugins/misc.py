@@ -1,7 +1,6 @@
 import os
 from pyrogram import Client, filters, enums
 from pyrogram.errors.exceptions.bad_request_400 import UserNotParticipant, MediaEmpty, PhotoInvalidDimensions, WebpageMediaEmpty
-from info import IMDB_TEMPLATE
 from utils import extract_user, get_file_id, get_poster, last_online
 import time
 from datetime import datetime
@@ -127,88 +126,110 @@ async def who_is(client, message):
         )
     await status_message.delete()
 
+from pyrogram import Client, filters
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+# pyrogram.errors ഇമ്പോർട്ട് ചെയ്തിട്ടുണ്ടെന്ന് ഉറപ്പാക്കുക
+from pyrogram.errors import MediaEmpty, PhotoInvalidDimensions, WebpageMediaEmpty
+import logging
+
+logger = logging.getLogger(__name__)
+
+# നിങ്ങളുടെ പ്രിയപ്പെട്ട കാപ്ഷൻ ടെംപ്ലേറ്റ് ഫോർമാറ്റ്
+IMDB_TEMPLATE = """
+🎬 **Title:** {title} ({year})
+⭐ **IMDb Rating:** {rating}/10 ({votes} votes)
+⏳ **Runtime:** {runtime} min
+🎭 **Genres:** {genres}
+🌐 **Languages:** {languages}
+🎥 **Director:** {director}
+🌟 **Stars:** {cast}
+🌍 **Country:** {countries}
+
+📖 **Storyline:** {plot}
+"""
+
 @Client.on_message(filters.command(["imdb", 'search']))
 async def imdb_search(client, message):
     if ' ' in message.text:
-        k = await message.reply('Searching ImDB')
+        k = await message.reply('🔍 Searching IMDb...')
         r, title = message.text.split(None, 1)
-        movies = await get_poster(title, bulk=True)
+        
+        # ⚡ മാറ്റം: bulk=True കൊടുത്തു
+        movies = await fetch_movie_details(title, bulk=True)
+        
         if not movies:
-            return await message.reply("No results Found")
+            return await message.reply("ക്ഷമിക്കണം, ഫലങ്ങൾ ഒന്നും കണ്ടെത്തിയില്ല! ❌")
+        
+        # ⚡ മാറ്റം: movie.movieID എന്നതിന് പകരം movie.imdb_id ഉപയോഗിച്ചു
         btn = [
             [
                 InlineKeyboardButton(
-                    text=f"{movie.get('title')} - {movie.get('year')}",
-                    callback_data=f"imdb#{movie.movieID}",
+                    text=f"{getattr(movie, 'title')} - {getattr(movie, 'year', 'N/A')}",
+                    callback_data=f"imdb#{getattr(movie, 'imdb_id')}",
                 )
             ]
-            for movie in movies
+            for movie in movies if getattr(movie, 'imdb_id', None)
         ]
-        await k.edit('Here is what i found on IMDb', reply_markup=InlineKeyboardMarkup(btn))
+        
+        if not btn:
+            return await k.edit('No processable results found.')
+            
+        await k.edit('Here is what i found on IMDb 👇', reply_markup=InlineKeyboardMarkup(btn))
     else:
-        await message.reply('Give me a movie / series Name')
+        await message.reply('Give me a movie / series Name\nExample: `/imdb Spiderman`')
 
 @Client.on_callback_query(filters.regex('^imdb'))
 async def imdb_callback(bot: Client, quer_y: CallbackQuery):
-    i, movie = quer_y.data.split('#')
-    imdb = await get_poster(query=movie, id=True)
+    i, movie_id = quer_y.data.split('#')
+    
+    # ⚡ മാറ്റം: id=True വെച്ച് ഫങ്ഷൻ കോൾ ചെയ്യുന്നു
+    imdb = await fetch_movie_details(query=movie_id, id=True)
+    
+    if not imdb:
+        await quer_y.answer("ഡാറ്റ എടുക്കാൻ കഴിഞ്ഞില്ല! ❌", show_alert=True)
+        return
+
     btn = [
-            [
-                InlineKeyboardButton(
-                    text=f"{imdb.get('title')}",
-                    url=imdb['url'],
-                )
-            ]
+        [
+            InlineKeyboardButton(
+                text=f"🎬 {imdb.get('title')} on IMDb",
+                url=imdb['url'],
+            )
         ]
-    message = quer_y.message.reply_to_message or quer_y.message
-    if imdb:
-        caption = IMDB_TEMPLATE.format(
-            query = imdb['title'],
-            title = imdb['title'],
-            votes = imdb['votes'],
-            aka = imdb["aka"],
-            seasons = imdb["seasons"],
-            box_office = imdb['box_office'],
-            localized_title = imdb['localized_title'],
-            kind = imdb['kind'],
-            imdb_id = imdb["imdb_id"],
-            cast = imdb["cast"],
-            runtime = imdb["runtime"],
-            countries = imdb["countries"],
-            certificates = imdb["certificates"],
-            languages = imdb["languages"],
-            director = imdb["director"],
-            writer = imdb["writer"],
-            producer = imdb["producer"],
-            composer = imdb["composer"],
-            cinematographer = imdb["cinematographer"],
-            music_team = imdb["music_team"],
-            distributors = imdb["distributors"],
-            release_date = imdb['release_date'],
-            year = imdb['year'],
-            genres = imdb['genres'],
-            poster = imdb['poster'],
-            plot = imdb['plot'],
-            rating = imdb['rating'],
-            url = imdb['url'],
-            **locals()
-        )
-    else:
-        caption = "No Results"
+    ]
+    
+    # സുരക്ഷിതമായി ക്യാപ്ഷൻ ഫോർമാറ്റ് ചെയ്യുന്നു
+    caption = IMDB_TEMPLATE.format(
+        title=imdb.get('title'),
+        year=imdb.get('year'),
+        rating=imdb.get('rating'),
+        votes=imdb.get('votes'),
+        genres=imdb.get('genres'),
+        languages=imdb.get('languages'),
+        director=imdb.get('director'),
+        cast=imdb.get('cast'),
+        countries=imdb.get('countries'),
+        plot=imdb.get('plot')[:600] # ടെലിഗ്രാം ലിമിറ്റിനായി പ്ലോട്ട് ചുരുക്കിയത്
+    )
+
     if imdb.get('poster'):
         try:
-            await quer_y.message.reply_photo(photo=imdb['poster'], caption=caption, reply_markup=InlineKeyboardMarkup(btn))
+            # Weserv പ്രോക്സി വഴി പോസ്റ്റർ ലിങ്ക് ടെലിഗ്രാമിന് പാകത്തിലാക്കുന്നു
+            safe_poster = f"https://weserv.nl{imdb['poster']}"
+            await quer_y.message.reply_photo(photo=safe_poster, caption=caption, reply_markup=InlineKeyboardMarkup(btn))
+            await quer_y.message.delete()
         except (MediaEmpty, PhotoInvalidDimensions, WebpageMediaEmpty):
             pic = imdb.get('poster')
             poster = pic.replace('.jpg', "._V1_UX360.jpg")
-            await quer_y.message.reply_photo(photo=poster, caption=caption, reply_markup=InlineKeyboardMarkup(btn))
+            try:
+                await quer_y.message.reply_photo(photo=poster, caption=caption, reply_markup=InlineKeyboardMarkup(btn))
+                await quer_y.message.delete()
+            except Exception:
+                await quer_y.message.edit(caption, reply_markup=InlineKeyboardMarkup(btn), disable_web_page_preview=False)
         except Exception as e:
             logger.exception(e)
             await quer_y.message.reply(caption, reply_markup=InlineKeyboardMarkup(btn), disable_web_page_preview=False)
-        await quer_y.message.delete()
     else:
         await quer_y.message.edit(caption, reply_markup=InlineKeyboardMarkup(btn), disable_web_page_preview=False)
+        
     await quer_y.answer()
-        
-
-        
