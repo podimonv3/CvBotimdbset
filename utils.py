@@ -62,16 +62,15 @@ logging.basicConfig(level=logging.INFO)
 
 def fetch_movie_details(movie_name):
     """
-    imdbinfo ലൈബ്രറി ഉപയോഗിച്ച് നേരിട്ട് IMDb-ൽ നിന്ന് വിവരങ്ങൾ എടുക്കുന്നു.
-    ഇതിൽ ക്യാഷിങ് (Caching) ഒഴിവാക്കിയിട്ടുണ്ട്.
+    imdbinfo ലൈബ്രറി ഉപയോഗിച്ച് നേരിട്ട് IMDb-ൽ നിന്ന് 
+    ലഭ്യമായ എല്ലാ വിവരങ്ങളും ശേഖരിച്ച് ക്യാപ്ഷൻ ഉണ്ടാക്കുന്നു.
     """
     try:
-        logging.info(f"Fetching fresh data from IMDb for: {movie_name}")
+        logging.info(f"Fetching complete data from IMDb for: {movie_name}")
         
         # IMDb-ൽ സിനിമ തിരയുന്നു
         search_results = search_title(movie_name)
         
-        # സിനിമകൾ ഒന്നും കണ്ടെത്തിയില്ലെങ്കിൽ
         if not search_results or not search_results.titles:
             return None
 
@@ -79,42 +78,55 @@ def fetch_movie_details(movie_name):
         first_match = search_results.titles[0]
         imdb_id = first_match.imdb_id
 
-        # ആ ID ഉപയോഗിച്ച് സിനിമയുടെ ലൈവ് വിവരങ്ങൾ ശേഖരിക്കുന്നു
+        # ആ ID ഉപയോഗിച്ച് സിനിമയുടെ എല്ലാ വിവരങ്ങളും എടുക്കുന്നു
         movie = get_movie(imdb_id)
         if not movie:
             return None
 
+        # IMDb-ൽ നിന്നുള്ള മുഴുവൻ വിവരങ്ങൾ വേർതിരിച്ചെടുക്കുന്നു
         title = getattr(movie, "title", "Unknown")
         year = getattr(movie, "year", "N/A")
         rating = getattr(movie, "rating", "N/A")
+        votes = getattr(movie, "votes", "N/A")
+        runtime = getattr(movie, "runtime", "N/A")
+        languages = ", ".join(getattr(movie, "languages", [])) if getattr(movie, "languages", []) else "N/A"
         
-        # Genres ലിസ്റ്റ് ഫോർമാറ്റ് ചെയ്യുന്നു
+        # Genres (കാറ്റഗറി)
         genres_list = getattr(movie, "genres", [])
         genres = ", ".join(genres_list) if genres_list else "N/A"
         
-        # പ്ലോട്ട് വിവരങ്ങൾ എടുക്കുന്നു
+        # Directors (സംവിധായകർ)
+        directors_list = getattr(movie, "directors", [])
+        directors = ", ".join(directors_list) if directors_list else "N/A"
+        
+        # Cast (അഭിനേതാക്കൾ - ആദ്യത്തെ 5 പേർ മാത്രം എടുക്കുന്നു)
+        cast_list = getattr(movie, "cast", [])
+        cast = ", ".join(cast_list[:5]) if cast_list else "N/A"
+        
+        # Plot (കഥ)
         plot = getattr(movie, "plot", "No description available.")
 
-        # IMDb പോസ്റ്റർ ഇമേജ് ലിങ്ക് എടുക്കുന്നു
-        poster_url = getattr(movie, "poster", None)
-
-        # മെസ്സേജ് ടെക്സ്റ്റ് ഫോർമാറ്റ് ചെയ്യുന്നു
+        # എല്ലാ വിവരങ്ങളും ഉൾപ്പെടുത്തിക്കൊണ്ടുള്ള പുതിയ ക്യാപ്ഷൻ ഫോർമാറ്റ്
         caption_text = (
             f"🎬 **{title} ({year})**\n\n"
-            f"⭐ **IMDb Rating:** {rating}/10\n"
+            f"⭐ **IMDb Rating:** {rating}/10 ({votes} votes)\n"
+            f"⏳ **Runtime:** {runtime} min\n"
+            f"🌐 **Language:** {languages}\n"
             f"🎭 **Genres:** {genres}\n\n"
-            f"📖 **Plot:** {plot[:500]}..."
+            f"🎥 **Director:** {directors}\n"
+            f"🌟 **Stars:** {cast}\n\n"
+            f"📖 **Storyline:** {plot[:400]}..." # ടെലിഗ്രാം ലിമിറ്റ് കവിയാതിരിക്കാൻ 400 അക്ഷരങ്ങളാക്കിയത്
         )
 
-        # വിവരങ്ങൾ നേരിട്ട് റിട്ടേൺ ചെയ്യുന്നു (സേവ് ചെയ്യുന്നില്ല)
         return {
             "caption": caption_text,
-            "poster": poster_url
+            "poster": None # നിലവിൽ പോസ്റ്റർ നമ്മൾ നോക്കുന്നില്ല
         }
 
     except Exception as e:
         logging.error(f"Pure IMDb Scraping Error: {e}")
         return "ERROR"
+
 
 
 
