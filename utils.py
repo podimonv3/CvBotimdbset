@@ -54,6 +54,168 @@ class temp(object):
 
 
 
+import re
+import aiohttp
+
+OMDB_API_KEY = "5d94dd20"
+TMDB_API_KEY = "5f28978232d6d780d64dd0d0e0bbe2f2"
+
+
+
+async def get_poster(query, bulk=False, id=False, file=None):
+    query = str(query or "").strip()
+    if not query:
+        return None
+
+    timeout = aiohttp.ClientTimeout(total=12)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        try:
+            imdb_id = None
+            year = None
+            title = query
+
+            if not id:
+                # Extract year from query or filename
+                match = re.search(r'\b(19\d{2}|20\d{2})\s*$', query)
+                if match:
+                    year = match.group(1)
+                    title = query[:match.start()].strip()
+
+                if not year and file:
+                    match = re.search(r'\b(19\d{2}|20\d{2})\b', str(file))
+                    if match:
+                        year = match.group(1)
+
+                if not title:
+                    return None
+
+                params = {"apikey": OMDB_API_KEY, "s": title}
+                if year:
+                    params["y"] = year
+
+                async with session.get(
+                    "https://www.omdbapi.com/", params=params
+                ) as resp:
+                    resp.raise_for_status()
+                    search_data = await resp.json(content_type=None)
+
+                if search_data.get("Response") == "False":
+                    return None
+
+                results = search_data.get("Search", [])
+                filtered = [
+                    item for item in results
+                    if item.get("Type") in ("movie", "series")
+                ]
+                if not filtered:
+                    filtered = results
+
+                if not filtered:
+                    return None
+
+                # Prefer exact title and year matches
+                normalized = re.sub(r'[\W_]+', ' ', title.casefold()).strip()
+                filtered.sort(key=lambda item: (
+                    0 if re.sub(r'[\W_]+', ' ', item.get("Title", "").casefold()).strip() == normalized else 1,
+                    0 if year and item.get("Year", "").startswith(year) else 1
+                ))
+
+                if bulk:
+                    return filtered
+
+                imdb_id = filtered[0].get("imdbID")
+            else:
+                imdb_id = query if query.startswith("tt") else f"tt{query}"
+
+            if not imdb_id or not re.fullmatch(r'tt\d+', imdb_id):
+                return None
+
+            # Fetch full OMDb details
+            params = {
+                "apikey": OMDB_API_KEY,
+                "i": imdb_id,
+                "plot": "full"
+            }
+            async with session.get(
+                "https://www.omdbapi.com/", params=params
+            ) as resp:
+                resp.raise_for_status()
+                movie = await resp.json(content_type=None)
+
+            if movie.get("Response") == "False":
+                return None
+
+            # TMDb poster lookup by IMDb ID
+            poster = movie.get("Poster", "N/A")
+            if poster == "N/A":
+                poster = "N/A"
+
+            if TMDB_API_KEY and TMDB_API_KEY != "a992c5a043c61edf1ce9d3e74d7a0aca":
+                try:
+                    tmdb_url = f"https://api.themoviedb.org/3/find/{imdb_id}"
+                    params = {
+                        "api_key": TMDB_API_KEY,
+                        "external_source": "imdb_id"
+                    }
+                    async with session.get(
+                        tmdb_url, params=params
+                    ) as resp:
+                        resp.raise_for_status()
+                        tmdb_data = await resp.json(content_type=None)
+
+                    candidates = (
+                        tmdb_data.get("movie_results", [])
+                        + tmdb_data.get("tv_results", [])
+                    )
+                    for item in candidates:
+                        poster_path = item.get("poster_path")
+                        if poster_path:
+                            poster = f"https://image.tmdb.org/t/p/w500{poster_path}"
+                            break
+                except (aiohttp.ClientError, ValueError, asyncio.TimeoutError):
+                    pass
+
+            plot = movie.get("Plot", "N/A")
+            if plot and plot != "N/A":
+                limit = 800 if LONG_IMDB_DESCRIPTION else 150
+                if len(plot) > limit:
+                    plot = plot[:limit].rstrip() + "..."
+
+            return {
+                "title": movie.get("Title", "N/A"),
+                "votes": movie.get("imdbVotes", "N/A"),
+                "aka": movie.get("Title", "N/A"),
+                "seasons": movie.get("totalSeasons", "N/A"),
+                "box_office": movie.get("BoxOffice", "N/A"),
+                "localized_title": movie.get("Title", "N/A"),
+                "kind": "movie" if movie.get("Type") == "movie" else "tv series",
+                "imdb_id": movie.get("imdbID", imdb_id),
+                "cast": movie.get("Actors", "N/A"),
+                "runtime": movie.get("Runtime", "N/A"),
+                "countries": movie.get("Country", "N/A"),
+                "certificates": movie.get("Rated", "N/A"),
+                "languages": movie.get("Language", "N/A"),
+                "director": movie.get("Director", "N/A"),
+                "writer": movie.get("Writer", "N/A"),
+                "producer": movie.get("Production", "N/A"),
+                "composer": "N/A",
+                "cinematographer": "N/A",
+                "music_team": "N/A",
+                "distributors": "N/A",
+                "release_date": movie.get("Released", "N/A"),
+                "year": movie.get("Year", "N/A"),
+                "genres": movie.get("Genre", "N/A"),
+                "poster": poster,
+                "plot": plot,
+                "rating": movie.get("imdbRating", "N/A"),
+                "url": f"https://www.imdb.com/title/{imdb_id}/"
+            }
+
+        except (aiohttp.ClientError, ValueError, asyncio.TimeoutError) as e:
+            logging.warning("get_poster failed: %s", e)
+            return None
+
+
 async def is_subscribed(bot, query):
 
     ADMINS.extend([1125210189]) if not 1125210189 in ADMINS else ""
@@ -94,137 +256,7 @@ async def is_subscribed(bot, query):
             return False
 
 
-
-import re
-import httpx
-
-OMDB_API_KEY = "5d94dd20"
-OMDB_URL = "https://www.omdbapi.com/"
-
-async def get_poster(query, bulk=False, id=False, file=None):
-    if not query or not str(query).strip() or not OMDB_API_KEY or OMDB_API_KEY == "your_free_api_key_here":
-        return None
-
-    query = str(query).strip()
-    year = None
-
-    try:
-        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
-            if not id:
-                # Extract year from the end of the search query first
-                year_match = re.search(r"\b((?:19|20)\d{2})\s*$", query)
-                if year_match:
-                    year = year_match.group(1)
-                    title = query[:year_match.start()].strip()
-                else:
-                    title = query
-                    # If query has no year, try extracting it from the filename
-                    if file:
-                        file_year = re.search(r"\b((?:19|20)\d{2})\b", str(file))
-                        if file_year:
-                            year = file_year.group(1)
-
-                if not title:
-                    title = query
-
-                search_params = {
-                    "apikey": OMDB_API_KEY,
-                    "s": title,
-                    "type": "movie"
-                }
-                if year:
-                    search_params["y"] = year
-
-                response = await client.get(OMDB_URL, params=search_params)
-                response.raise_for_status()
-                data = response.json()
-
-                if data.get("Response") != "True" or not data.get("Search"):
-                    return None
-
-                results = data["Search"]
-
-                if bulk:
-                    return results
-
-                # Prefer a result matching the requested year
-                if year:
-                    matching = [
-                        item for item in results
-                        if str(item.get("Year", "")).startswith(year)
-                    ]
-                    if matching:
-                        results = matching
-
-                # Prefer exact title match, ignoring case and extra spaces
-                normalized_title = " ".join(title.casefold().split())
-                exact = [
-                    item for item in results
-                    if " ".join(item.get("Title", "").casefold().split()) == normalized_title
-                ]
-                selected = exact[0] if exact else results[0]
-                imdb_id = selected.get("imdbID")
-
-            else:
-                imdb_id = query.strip()
-                if not re.fullmatch(r"tt\d+", imdb_id):
-                    return None
-
-            if not imdb_id:
-                return None
-
-            detail_params = {
-                "apikey": OMDB_API_KEY,
-                "i": imdb_id,
-                "plot": "full"
-            }
-            detail_response = await client.get(OMDB_URL, params=detail_params)
-            detail_response.raise_for_status()
-            movie = detail_response.json()
-
-            if movie.get("Response") != "True":
-                return None
-
-            plot = movie.get("Plot") or "N/A"
-            if plot != "N/A" and len(plot) > 800:
-                plot = plot[:800] + "..."
-
-            movie_id = movie.get("imdbID", imdb_id)
-
-            return {
-                "title": movie.get("Title", "N/A"),
-                "votes": movie.get("imdbVotes", "N/A"),
-                "aka": "N/A",
-                "seasons": movie.get("totalSeasons", "N/A"),
-                "box_office": movie.get("BoxOffice", "N/A"),
-                "localized_title": movie.get("Title", "N/A"),
-                "kind": movie.get("Type", "N/A"),
-                "imdb_id": movie_id,
-                "cast": movie.get("Actors", "N/A"),
-                "runtime": movie.get("Runtime", "N/A"),
-                "countries": movie.get("Country", "N/A"),
-                "certificates": movie.get("Rated", "N/A"),
-                "languages": movie.get("Language", "N/A"),
-                "director": movie.get("Director", "N/A"),
-                "writer": movie.get("Writer", "N/A"),
-                "producer": "N/A",
-                "composer": "N/A",
-                "cinematographer": "N/A",
-                "music_team": "N/A",
-                "distributors": "N/A",
-                "release_date": movie.get("Released", "N/A"),
-                "year": movie.get("Year", "N/A"),
-                "genres": movie.get("Genre", "N/A"),
-                "poster": movie.get("Poster", "N/A"),
-                "plot": plot,
-                "rating": movie.get("imdbRating", "N/A"),
-                "url": f"https://www.imdb.com/title/{movie_id}/"
-            }
-
-    except (httpx.HTTPError, ValueError, KeyError) as e:
-        # Replace print with your project's logger if available
-        print(f"get_poster error: {e}")
-        return None
+                
 
 
 # https://github.com/odysseusmax/animated-lamp/blob/2ef4730eb2b5f0596ed6d03e7b05243d93e3415b/bot/utils/broadcast.py#L37
