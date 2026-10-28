@@ -802,31 +802,23 @@ async def auto_filter(client, msg, spoll=False):
     else:
         btn.append([InlineKeyboardButton(text="🗓 1/1", callback_data="pages")])
 
-    # IMDb കോർ ഫങ്ഷൻ കോൾ ചെയ്ത് ഡാറ്റ എടുക്കുന്നു
+    # IMDb കോർ ഫങ്ഷൻ കോൾ ചെയ്ത് ലൈവ് ഡാറ്റ എടുക്കുന്നു
     movie_data = fetch_movie_details(search)
 
     if movie_data and movie_data != "ERROR":
-        # സിനിമയുടെ പോസ്റ്ററും പുതിയ ക്യാപ്ഷനും ഫങ്ഷനിൽ നിന്ന് എടുക്കുന്നു
-        poster = movie_data["poster"]
+        # സിനിമയുടെ വിവരങ്ങൾ അടങ്ങിയ ക്യാപ്ഷൻ ഫങ്ഷനിൽ നിന്ന് എടുക്കുന്നു        
         cap = movie_data["caption"]
     else:
-        # സിനിമ കണ്ടെത്താത്ത സാഹചര്യത്തിൽ പഴയ ക്യാപ്ഷൻ തന്നെ വെക്കാം
-        poster = None
+        # സിനിമ കണ്ടെത്താത്ത സാഹചര്യത്തിൽ കാണിക്കേണ്ട മറുപടി        
         cap = f"ക്ഷമിക്കണം, '{search}' എന്ന സിനിമയുടെ വിവരങ്ങൾ കണ്ടെത്താൻ കഴിഞ്ഞില്ല! ❌"
 
-    # പോസ്റ്റർ ഉണ്ടെങ്കിൽ അത് സഹിതവും, ഇല്ലെങ്കിൽ ടെക്സ്റ്റ് മാത്രമായും ഇൻലൈൻ ബട്ടൺ ചേർത്ത് അയക്കുന്നു
-    if poster:
-        await message.reply_photo(
-            photo=poster,
-            caption=cap,
-            reply_markup=InlineKeyboardMarkup(btn)
-        )
-    else:
-        await message.reply_text(
-            text=cap,
-            reply_markup=InlineKeyboardMarkup(btn)
-        )
-
+    # ⚡ ഇവിടെയാണ് മാറ്റം: if-else ബ്ലോക്കിന് പുറത്ത് (നേരെ താഴെ) വരണം.
+    # സിനിമ കണ്ടെത്തിയാലും ഇല്ലെങ്കിലും ഈ മെസ്സേജ് കൃത്യമായി അയക്കപ്പെടും.
+    await message.reply_text(
+        text=cap,
+        reply_markup=InlineKeyboardMarkup(btn)
+    )
+    
     # താൽക്കാലികമായി കാണിച്ച സെർച്ചിങ് മെസ്സേജ് ഡിലീറ്റ് ചെയ്യുന്നു
     if spoll:
         await msg.delete()
