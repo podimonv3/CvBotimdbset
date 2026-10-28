@@ -727,7 +727,7 @@ async def auto_filter(client, msg, spoll=False):
             
             if not files:
                 if settings["spell_check"]:
-                    return await advantage_spell_chok(msg)
+                    return await advantage_spell_chok(client, msg)
                 else:
                     return
         else:
@@ -873,46 +873,6 @@ async def _spell_not_found(msg):
     except Exception:
         pass
 
-
-
-
-
-import re
-import asyncio
-import httpx
-from difflib import SequenceMatcher
-from pyrogram import enums
-
-def _spell_normalize(text):
-    return re.sub(r"[^a-z0-9]+", "", str(text).casefold())
-
-def _spell_variants(query, limit=8):
-    words = query.split()
-    variants = []
-    for i, word in enumerate(words):
-        if len(word) < 4:
-            continue
-        for pos in range(len(word)):
-            changed = word[:pos] + word[pos + 1:]
-            if len(changed) >= 3:
-                new_words = words.copy()
-                new_words[i] = changed
-                candidate = " ".join(new_words)
-                if candidate != query and candidate not in variants:
-                    variants.append(candidate)
-                if len(variants) >= limit:
-                    return variants
-        for pos in range(len(word) - 1):
-            changed = list(word)
-            changed[pos], changed[pos + 1] = changed[pos + 1], changed[pos]
-            new_words = words.copy()
-            new_words[i] = "".join(changed)
-            candidate = " ".join(new_words)
-            if candidate != query and candidate not in variants:
-                variants.append(candidate)
-            if len(variants) >= limit:
-                return variants
-    return variants
 
 
 async def advantage_spell_chok(client, msg):
