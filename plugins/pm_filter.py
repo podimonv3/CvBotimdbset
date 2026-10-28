@@ -34,7 +34,7 @@ BUTTONS = {}
 SPELL_CHECK = {}
 
 DELETE_TIME = int(environ.get("DELETE_TIME", 600))
-
+import httpx
 
 
 @Client.on_message(filters.group & filters.text & filters.incoming)
@@ -874,94 +874,92 @@ async def _spell_not_found(msg):
         pass
 
 
-import re
-import asyncio
-from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
 
 async def advantage_spell_chok(msg):
-    # സ്റ്റോപ്പ് വേർഡുകൾ റിമൂവ് ചെയ്യുന്നു
     query = re.sub(
-        r"\b(pl(i|e)*?(s|z+|ease|se|ese|(e+)s(e)?)|((send|snd|giv(e)?|gib)(\sme)?)|movie(s)?|new|latest|br((o|u)h?)*|^h(e|a)?(l)*(o)*|mal(ayalam)?|t(h)?amil|file|that|find|und(o)*|kit(t(i|y)?)?o(w)?|thar(u)?(o)*w?|kittum(o)*|aya(k)*(um(o)*)?|full\smovie|any(one)|with\ssubtitle(s)?)",
-        "", msg.text, flags=re.IGNORECASE)
-    
-    query = query.strip() + " movie"
-    
-    # ഗൂഗിൾ / ഡക്ക്ഡക്ക്ഗോ സെർച്ച് ഫങ്ഷൻ (നിങ്ങളുടെ കോഡിലുള്ളത്)
-    g_s = await search_gagala(query)
-    g_s += await search_gagala(msg.text)
-    gs_parsed = []
-    
-    if not g_s:
-        k = await msg.reply("I couldn't find any movie in that name.")
-        await asyncio.sleep(8)
-        await k.delete()
+        r"\b(pl(i|e)\*?(s|z+|ease|se|ese|(e+)s(e)?)|((send|snd|giv(e)?|gib)(\sme)?)|movie(s)?|new|latest|br((o|u)h?)\*|^h(e|a)?(l)\*(o)\*|mal(ayalam)?|t(h)?amil|file|that|find|und(o)\*|kit(t(i|y)?)?o(w)?|thar(u)?(o)?\*w?|kittum(o)?\*|aya(k)\*(um(o)*)?|full\s?movie|any(one)|with\s?subtitle(s)?)",
+        "", msg.text or "", flags=re.IGNORECASE
+    ).strip()
+
+    if not query:
         return
-        
-    regex = re.compile(r".*(imdb|wikipedia).*", re.IGNORECASE)
-    gs = list(filter(regex.match, g_s))
-    
-    gs_parsed = [re.sub(
-        r'\b(\-([a-zA-Z-\s])\-\simdb|(\-\s)?imdb|(\-\s)?wikipedia|\(|\)|\-|reviews|full|all|episode(s)?|film|movie|series)',
-        '', i, flags=re.IGNORECASE) for i in gs]
-        
-    if not gs_parsed:
-        reg = re.compile(r"watch(\s[a-zA-Z0-9_\s\-\(\)]*)*\|.*", re.IGNORECASE)
-        for mv in g_s:
-            match = reg.match(mv)
-            if match:
-                gs_parsed.append(match.group(1))
-                
+
     user = msg.from_user.id if msg.from_user else 0
     movielist = []
-    
-    # ഡ്യൂപ്ലിക്കേറ്റ് റിമൂവ് ചെയ്യുന്നു
-    gs_parsed = list(dict.fromkeys(gs_parsed))
-    
-    if len(gs_parsed) > 3:
-        gs_parsed = gs_parsed[:3]
-        
-    if gs_parsed:
-        for mov in gs_parsed:
-            # പുതിയ TMDb അധിഷ്ഠിത get_poster ഫങ്ഷൻ വിളിക്കുന്നു
-            tmdb_s = await get_poster(mov.strip(), bulk=True)
-            if tmdb_s:
-                for movie in tmdb_s:
-                    # TMDb-ൽ സിനിമയ്ക്ക് 'title'-ഉം ടിവി സീരീസിന് 'name'-ഉം ആണ് ഉണ്ടാകുക
-                    title = movie.get('title') if movie.get('media_type') == 'movie' else movie.get('name')
-                    # ഒരുപക്ഷേ media_type ഇല്ലെങ്കിൽ സുരക്ഷിതമായി രണ്ടും ചെക്ക് ചെയ്യുന്നു
-                    if not title:
-                        title = movie.get('title') or movie.get('name')
-                    
-                    if title:
-                        movielist.append(title)
-                        
-    # സെർച്ച് കീവേഡുകളും ലിസ്റ്റിലേക്ക് ചേർക്കുന്നു
-    movielist += [(re.sub(r'(\-|\(|\)|_)', '', i, flags=re.IGNORECASE)).strip() for i in gs_parsed]
-    movielist = list(dict.fromkeys(movielist))  # ഡ്യൂപ്ലിക്കേറ്റ്സ് വീണ്ടും കളയുന്നു
-    
+
+    try:
+        results = await get_poster(query, bulk=True)
+        if results:
+            for movie in results:
+                title = movie.get("title")
+                year = movie.get("year")
+                if title:
+                    label = f"{title} ({year})" if year and str(year) != "N/A" else title
+                    movielist.append(label)
+    except Exception as e:
+        logger.warning("TMDB spell-check search failed for %r: %s", query, e)
+
+    # TMDB ഫലങ്ങൾ ഇല്ലെങ്കിൽ OMDb ഉപയോഗിച്ച് തിരയുക
     if not movielist:
-        k = await msg.reply("I couldn't find anything related to that. Check your spelling")
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(
+                    "https://www.omdbapi.com/",
+                    params={
+                        "apikey": OMDB_API_KEY,
+                        "s": query,
+                        "type": "movie"
+                    }
+                )
+                data = response.json()
+
+                if response.status_code == 200 and data.get("Response") == "True":
+                    for movie in data.get("Search", []):
+                        title = movie.get("Title")
+                        year = movie.get("Year")
+                        if title:
+                            movielist.append(
+                                f"{title} ({year})" if year else title
+                            )
+        except Exception as e:
+            logger.warning("OMDb spell-check search failed for %r: %s", query, e)
+
+    movielist = list(dict.fromkeys(movielist))[:10]
+
+    if not movielist:
+        k = await msg.reply(
+            "I couldn't find anything related to that. Check your spelling"
+        )
         await asyncio.sleep(8)
         await k.delete()
         return
-        
-    # ഗ്ലോബൽ ഡിക്ഷണറിയിൽ സേവ് ചെയ്യുന്നു
+
     SPELL_CHECK[msg.id] = movielist
-    
-    # ബട്ടണുകൾ തയ്യാറാക്കുന്നു
-    btn = [[
+
+    btn = [
+        [
+            InlineKeyboardButton(
+                text=movie[:60],
+                callback_data=f"spolling#{user}#{k}"
+            )
+        ]
+        for k, movie in enumerate(movielist)
+    ]
+
+    btn.append([
         InlineKeyboardButton(
-            text=movie.strip(),
-            callback_data=f"spolling#{user}#{k}",
+            text="Close",
+            callback_data=f"spolling#{user}#close_spellcheck"
         )
-    ] for k, movie in enumerate(movielist)]
-    
-    btn.append([InlineKeyboardButton(text="Close", callback_data=f'spolling#{user}#close_spellcheck')])
-    
-    await msg.reply("I couldn't find anything related to that\nDid you mean any one of these?",
-                    reply_markup=InlineKeyboardMarkup(btn))
+    ])
 
+    await msg.reply(
+        "I couldn't find anything related to that\nDid you mean any one of these?",
+        reply_markup=InlineKeyboardMarkup(btn)
+    )
 
+  
 async def manual_filters(client, message, text=False):
     group_id = message.chat.id
     name = text or message.text
