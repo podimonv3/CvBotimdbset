@@ -10,3 +10,4 @@ python-dotenv
 apscheduler
 aiohttp
 imdbpy==2021.4.18
+cinemagoer
