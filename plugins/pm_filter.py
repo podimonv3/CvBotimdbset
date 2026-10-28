@@ -24,7 +24,7 @@ from database.ia_filterdb import Media, get_file_details, get_search_results
 from database.users_chats_db import db
 from info import ADMINS, AUTH_CHANNEL, CUSTOM_FILE_CAPTION, REQ_CHANNEL, LOG_CHANNEL
 from Script import script
-from utils import (get_poster, fetch_movie_details, get_settings, get_size, is_subscribed,
+from utils import (get_poster, get_settings, get_size, is_subscribed,
                    save_group_settings, scheduler, search_gagala, temp)
 
 logger = logging.getLogger(__name__)
@@ -790,36 +790,62 @@ async def auto_filter(client, msg, spoll=False):
         BUTTONS[key] = search
         req = message.from_user.id if message.from_user else 0
         btn.append(
-            [
-                InlineKeyboardButton(
-                    text=f"🗓 1/{round(int(total_results) / 10)}", callback_data="pages"
-                ),
-                InlineKeyboardButton(
-                    text="NEXT ⏩", callback_data=f"next_{req}_{key}_{offset}"
-                ),
-            ]
+            [InlineKeyboardButton(text=f"🗓 1/{math.ceil(int(total_results) / 10)}", callback_data="pages"),
+             InlineKeyboardButton(text="NEXT ⏩", callback_data=f"next_{req}_{key}_{offset}")]
         )
     else:
-        btn.append([InlineKeyboardButton(text="🗓 1/1", callback_data="pages")])
-
-    # IMDb കോർ ഫങ്ഷൻ കോൾ ചെയ്ത് ലൈവ് ഡാറ്റ എടുക്കുന്നു
-    movie_data = fetch_movie_details(search)
-
-    if movie_data and movie_data != "ERROR":
-        # സിനിമയുടെ വിവരങ്ങൾ അടങ്ങിയ ക്യാപ്ഷൻ ഫങ്ഷനിൽ നിന്ന് എടുക്കുന്നു        
-        cap = movie_data["caption"]
+        btn.append(
+            [InlineKeyboardButton(text="🗓 1/1", callback_data="pages")]
+        )
+    imdb = await get_poster(search, file=(files[0]).file_name) if settings["imdb"] else None
+    TEMPLATE = settings['template']
+    if imdb:
+        cap = TEMPLATE.format(
+            query=search,
+            title=imdb['title'],
+            votes=imdb['votes'],
+            aka=imdb["aka"],
+            seasons=imdb["seasons"],
+            box_office=imdb['box_office'],
+            localized_title=imdb['localized_title'],
+            kind=imdb['kind'],
+            imdb_id=imdb["imdb_id"],
+            cast=imdb["cast"],
+            runtime=imdb["runtime"],
+            countries=imdb["countries"],
+            certificates=imdb["certificates"],
+            languages=imdb["languages"],
+            director=imdb["director"],
+            writer=imdb["writer"],
+            producer=imdb["producer"],
+            composer=imdb["composer"],
+            cinematographer=imdb["cinematographer"],
+            music_team=imdb["music_team"],
+            distributors=imdb["distributors"],
+            release_date=imdb['release_date'],
+            year=imdb['year'],
+            genres=imdb['genres'],
+            poster=imdb['poster'],
+            plot=imdb['plot'],
+            rating=imdb['rating'],
+            url=imdb['url'],
+            **locals()
+        )
     else:
-        # സിനിമ കണ്ടെത്താത്ത സാഹചര്യത്തിൽ കാണിക്കേണ്ട മറുപടി        
-        cap = f"ക്ഷമിക്കണം, '{search}' എന്ന സിനിമയുടെ വിവരങ്ങൾ കണ്ടെത്താൻ കഴിഞ്ഞില്ല! ❌"
-
-    # ⚡ ഇവിടെയാണ് മാറ്റം: if-else ബ്ലോക്കിന് പുറത്ത് (നേരെ താഴെ) വരണം.
-    # സിനിമ കണ്ടെത്തിയാലും ഇല്ലെങ്കിലും ഈ മെസ്സേജ് കൃത്യമായി അയക്കപ്പെടും.
-    await message.reply_text(
-        text=cap,
-        reply_markup=InlineKeyboardMarkup(btn)
-    )
-    
-    # താൽക്കാലികമായി കാണിച്ച സെർച്ചിങ് മെസ്സേജ് ഡിലീറ്റ് ചെയ്യുന്നു
+        cap = f"Here is what i found for your query {search}"
+    if imdb and imdb.get('poster'):
+        try:
+            await message.reply_photo(photo=imdb.get('poster'), caption=cap[:1024],
+                                      reply_markup=InlineKeyboardMarkup(btn))
+        except (MediaEmpty, PhotoInvalidDimensions, WebpageMediaEmpty):
+            pic = imdb.get('poster')
+            poster = pic.replace('.jpg', "._V1_UX360.jpg")
+            await message.reply_photo(photo=poster, caption=cap[:1024], reply_markup=InlineKeyboardMarkup(btn))
+        except Exception as e:
+            logger.exception(e)
+            await message.reply_text(cap, reply_markup=InlineKeyboardMarkup(btn))
+    else:
+        await message.reply_text(cap, reply_markup=InlineKeyboardMarkup(btn))
     if spoll:
         await msg.delete()
 
