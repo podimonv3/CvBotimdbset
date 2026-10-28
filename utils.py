@@ -60,72 +60,59 @@ class temp(object):
 
 logging.basicConfig(level=logging.INFO)
 
-def fetch_movie_details(movie_name):
+from imdbinfo import search_title, get_movie 
+
+async def fetch_movie_details(query, bulk=False, id=False):
     """
-    imdbinfo ലൈബ്രറി ഉപയോഗിച്ച് നേരിട്ട് IMDb-ൽ നിന്ന് 
-    ലഭ്യമായ എല്ലാ വിവരങ്ങളും ശേഖരിച്ച് ക്യാപ്ഷൻ ഉണ്ടാക്കുന്നു.
+    നിങ്ങളുടെ കോളിങ് ലോജിക്കിന് അനുസരിച്ച് bulk ആയും 
+    ID ഉപയോഗിച്ചും വിവരങ്ങൾ നൽകുന്ന ഫങ്ഷൻ.
     """
     try:
-        logging.info(f"Fetching complete data from IMDb for: {movie_name}")
-        
-        # IMDb-ൽ സിനിമ തിരയുന്നു
-        search_results = search_title(movie_name)
-        
-        if not search_results or not search_results.titles:
-            return None
+        # 1. ബൾക്ക് സെർച്ച് (സിനിമകളുടെ ലിസ്റ്റ് ബട്ടണിനായി നൽകാൻ)
+        if bulk:
+            search_results = search_title(query)
+            if not search_results or not search_results.titles:
+                return []
+            # സിനിമകളുടെ ലിസ്റ്റ് റിട്ടേൺ ചെയ്യുന്നു
+            return search_results.titles 
 
-        # ഏറ്റവും അടുത്ത ആദ്യത്തെ സിനിമയുടെ IMDb ID എടുക്കുന്നു
-        first_match = search_results.titles[0]
-        imdb_id = first_match.imdb_id
+        # 2. ഐഡി ഉപയോഗിച്ച് ഒരു സിനിമയുടെ മാത്രം മുഴുവൻ വിവരങ്ങൾ എടുക്കാൻ
+        if id:
+            movie = get_movie(query) # ഇവിടെ query എന്നത് IMDb ID (ttXXXX) ആണ്
+            if not movie:
+                return None
+            
+            # ഡാറ്റ ഡിക്ഷണറി രൂപത്തിലേക്ക് മാറ്റുന്നു
+            genres_list = getattr(movie, "genres", [])
+            directors_list = getattr(movie, "directors", [])
+            cast_list = getattr(movie, "cast", [])
+            languages_list = getattr(movie, "languages", [])
+            countries_list = getattr(movie, "countries", [])
 
-        # ആ ID ഉപയോഗിച്ച് സിനിമയുടെ എല്ലാ വിവരങ്ങളും എടുക്കുന്നു
-        movie = get_movie(imdb_id)
-        if not movie:
-            return None
-
-        # IMDb-ൽ നിന്നുള്ള മുഴുവൻ വിവരങ്ങൾ വേർതിരിച്ചെടുക്കുന്നു
-        title = getattr(movie, "title", "Unknown")
-        year = getattr(movie, "year", "N/A")
-        rating = getattr(movie, "rating", "N/A")
-        votes = getattr(movie, "votes", "N/A")
-        runtime = getattr(movie, "runtime", "N/A")
-        languages = ", ".join(getattr(movie, "languages", [])) if getattr(movie, "languages", []) else "N/A"
-        
-        # Genres (കാറ്റഗറി)
-        genres_list = getattr(movie, "genres", [])
-        genres = ", ".join(genres_list) if genres_list else "N/A"
-        
-        # Directors (സംവിധായകർ)
-        directors_list = getattr(movie, "directors", [])
-        directors = ", ".join(directors_list) if directors_list else "N/A"
-        
-        # Cast (അഭിനേതാക്കൾ - ആദ്യത്തെ 5 പേർ മാത്രം എടുക്കുന്നു)
-        cast_list = getattr(movie, "cast", [])
-        cast = ", ".join(cast_list[:5]) if cast_list else "N/A"
-        
-        # Plot (കഥ)
-        plot = getattr(movie, "plot", "No description available.")
-
-        # എല്ലാ വിവരങ്ങളും ഉൾപ്പെടുത്തിക്കൊണ്ടുള്ള പുതിയ ക്യാപ്ഷൻ ഫോർമാറ്റ്
-        caption_text = (
-            f"🎬 **{title} ({year})**\n\n"
-            f"⭐ **IMDb Rating:** {rating}/10 ({votes} votes)\n"
-            f"⏳ **Runtime:** {runtime} min\n"
-            f"🌐 **Language:** {languages}\n"
-            f"🎭 **Genres:** {genres}\n\n"
-            f"🎥 **Director:** {directors}\n"
-            f"🌟 **Stars:** {cast}\n\n"
-            f"📖 **Storyline:** {plot[:400]}..." # ടെലിഗ്രാം ലിമിറ്റ് കവിയാതിരിക്കാൻ 400 അക്ഷരങ്ങളാക്കിയത്
-        )
-
-        return {
-            "caption": caption_text,
-            "poster": None # നിലവിൽ പോസ്റ്റർ നമ്മൾ നോക്കുന്നില്ല
-        }
-
+            return {
+                "title": getattr(movie, "title", "N/A"),
+                "year": getattr(movie, "year", "N/A"),
+                "rating": getattr(movie, "rating", "N/A"),
+                "votes": getattr(movie, "votes", "N/A"),
+                "runtime": getattr(movie, "runtime", "N/A"),
+                "genres": ", ".join(genres_list) if genres_list else "N/A",
+                "director": ", ".join(directors_list) if directors_list else "N/A",
+                "cast": ", ".join(cast_list[:5]) if cast_list else "N/A", # 5 Stars
+                "languages": ", ".join(languages_list) if languages_list else "N/A",
+                "countries": ", ".join(countries_list) if countries_list else "N/A",
+                "plot": getattr(movie, "plot", "No description available."),
+                "poster": getattr(movie, "poster", None),
+                "url": f"https://imdb.com{query}/",
+                # താഴെ പറയുന്നവ imdbinfo-ൽ ലഭ്യമാണെങ്കിൽ വരും, ഇല്ലെങ്കിൽ N/A
+                "aka": "N/A", "seasons": "N/A", "box_office": "N/A", "localized_title": "N/A",
+                "kind": "N/A", "imdb_id": query, "certificates": "N/A", "writer": "N/A",
+                "producer": "N/A", "composer": "N/A", "cinematographer": "N/A",
+                "music_team": "N/A", "distributors": "N/A", "release_date": "N/A"
+            }
+            
     except Exception as e:
-        logging.error(f"Pure IMDb Scraping Error: {e}")
-        return "ERROR"
+        print(f"Error in fetch: {e}")
+        return [] if bulk else None
 
 
 
