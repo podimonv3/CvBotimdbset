@@ -23,6 +23,14 @@ from database.join_reqs import JoinReqs as db2
 from database.users_chats_db import db
 from info import ADMINS, AUTH_CHANNEL, LONG_IMDB_DESCRIPTION, MAX_LIST_ELM, REQ_CHANNEL
 
+
+
+
+from imdb import Cinemagoer
+ia = Cinemagoer()
+
+
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -49,6 +57,60 @@ class temp(object):
     U_NAME = None
     B_NAME = None
     SETTINGS = {}
+
+
+
+
+logging.basicConfig(level=logging.INFO)
+
+def fetch_movie_details(movie_name):
+    """
+    സിനിമയുടെ പേര് നൽകിയാൽ IMDb-ൽ നിന്ന് വിവരങ്ങൾ എടുത്ത് നൽകുന്ന ഫങ്ഷൻ.
+    """
+    try:
+        # സിനിമകൾ തിരയുന്നു
+        movies = ia.search_movie(movie_name)
+        
+        if not movies:
+            return None # സിനിമ കണ്ടെത്തിയില്ലെങ്കിൽ None റിട്ടേൺ ചെയ്യും
+
+        # ഏറ്റവും അടുത്ത ആദ്യത്തെ റിസൾട്ട് എടുക്കുന്നു
+        first_movie = movies[0]
+        movie_id = first_movie.movieID
+        
+        # സിനിമയുടെ മുഴുവൻ വിവരങ്ങളും എടുക്കുന്നു
+        movie = ia.get_movie(movie_id)
+
+        # വിവരങ്ങൾ വേർതിരിച്ചെടുക്കുന്നു
+        title = movie.get('title', 'Unknown')
+        year = movie.get('year', 'N/A')
+        rating = movie.get('rating', 'N/A')
+        genres = ", ".join(movie.get('genres', []))
+        
+        # പ്ലോട്ട് വിവരങ്ങൾ എടുക്കുന്നു
+        plot = movie.get('plot outline', movie.get('plot', ['No plot available.']))
+        if isinstance(plot, list):
+            plot = plot[0]
+
+        # പോസ്റ്റർ ഇമേജ് ലിങ്ക് എടുക്കുന്നു
+        poster_url = movie.get('full-size cover url', movie.get('cover url'))
+
+        # മെസ്സേജ് ടെക്സ്റ്റ് മാർക്ക്ഡൗൺ ഫോർമാറ്റിൽ സെറ്റ് ചെയ്യുന്നു
+        caption_text = (
+            f"🎬 **{title} ({year})**\n\n"
+            f"⭐ **Rating:** {rating}/10\n"
+            f"🎭 **Genres:** {genres}\n\n"
+            f"📖 **Plot:** {plot[:500]}..."
+        )
+
+        return {
+            "caption": caption_text,
+            "poster": poster_url
+        }
+
+    except Exception as e:
+        logging.error(f"IMDb Error: {e}")
+        return "ERROR"
 
 
 async def is_subscribed(bot, query):
