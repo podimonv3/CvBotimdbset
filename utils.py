@@ -74,6 +74,19 @@ TMDB_BASE = "https://api.themoviedb.org/3"
 TMDB_IMAGE = "https://image.tmdb.org/t/p/original"
 
 
+def list_to_str(k, max_elm=None):
+    if not k:
+        return "N/A"
+    
+    # If a single number is passed, wrap it in a list
+    if isinstance(k, (int, float)):
+        k = [k]
+        
+    limit = int(max_elm or MAX_LIST_ELM or 5)
+    if len(k) > limit:
+        k = k[:limit]
+    return ', '.join(str(elem) for elem in k)
+
 def _movie_year(query):
     match = re.search(r"\b(19\d{2}|20\d{2}|21\d{2})\b", str(query))
     return match.group(1) if match else None
@@ -408,14 +421,6 @@ class _ImdbioFakeMovie:
         if k == 'year': return self._m.year or default
         if k == 'kind': return self._m.kind or default
         return default
-
-def list_to_str(k, max_elm=None):
-    if not k:
-        return "N/A"
-    limit = int(max_elm or MAX_LIST_ELM or 5)
-    if len(k) > limit:
-        k = k[:limit]
-    return ', '.join(str(elem) for elem in k)
 
 def _names(people):
     try:
