@@ -25,10 +25,7 @@ from info import ADMINS, AUTH_CHANNEL, LONG_IMDB_DESCRIPTION, MAX_LIST_ELM, REQ_
 
 
 
-
-from imdb import Cinemagoer
-ia = Cinemagoer()
-
+from imdbinfo import search_title, get_movie
 
 
 logger = logging.getLogger(__name__)
@@ -65,52 +62,60 @@ logging.basicConfig(level=logging.INFO)
 
 def fetch_movie_details(movie_name):
     """
-    സിനിമയുടെ പേര് നൽകിയാൽ IMDb-ൽ നിന്ന് വിവരങ്ങൾ എടുത്ത് നൽകുന്ന ഫങ്ഷൻ.
+    imdbinfo ലൈബ്രറി ഉപയോഗിച്ച് നേരിട്ട് IMDb-ൽ നിന്ന് വിവരങ്ങൾ എടുക്കുന്നു.
+    ഇതിൽ ക്യാഷിങ് (Caching) ഒഴിവാക്കിയിട്ടുണ്ട്.
     """
     try:
-        # സിനിമകൾ തിരയുന്നു
-        movies = ia.search_movie(movie_name)
+        logging.info(f"Fetching fresh data from IMDb for: {movie_name}")
         
-        if not movies:
-            return None # സിനിമ കണ്ടെത്തിയില്ലെങ്കിൽ None റിട്ടേൺ ചെയ്യും
-
-        # ഏറ്റവും അടുത്ത ആദ്യത്തെ റിസൾട്ട് എടുക്കുന്നു
-        first_movie = movies[0]
-        movie_id = first_movie.movieID
+        # IMDb-ൽ സിനിമ തിരയുന്നു
+        search_results = search_title(movie_name)
         
-        # സിനിമയുടെ മുഴുവൻ വിവരങ്ങളും എടുക്കുന്നു
-        movie = ia.get_movie(movie_id)
+        # സിനിമകൾ ഒന്നും കണ്ടെത്തിയില്ലെങ്കിൽ
+        if not search_results or not search_results.titles:
+            return None
 
-        # വിവരങ്ങൾ വേർതിരിച്ചെടുക്കുന്നു
-        title = movie.get('title', 'Unknown')
-        year = movie.get('year', 'N/A')
-        rating = movie.get('rating', 'N/A')
-        genres = ", ".join(movie.get('genres', []))
+        # ഏറ്റവും അടുത്ത ആദ്യത്തെ സിനിമയുടെ IMDb ID എടുക്കുന്നു
+        first_match = search_results.titles[0]
+        imdb_id = first_match.imdb_id
+
+        # ആ ID ഉപയോഗിച്ച് സിനിമയുടെ ലൈവ് വിവരങ്ങൾ ശേഖരിക്കുന്നു
+        movie = get_movie(imdb_id)
+        if not movie:
+            return None
+
+        title = getattr(movie, "title", "Unknown")
+        year = getattr(movie, "year", "N/A")
+        rating = getattr(movie, "rating", "N/A")
+        
+        # Genres ലിസ്റ്റ് ഫോർമാറ്റ് ചെയ്യുന്നു
+        genres_list = getattr(movie, "genres", [])
+        genres = ", ".join(genres_list) if genres_list else "N/A"
         
         # പ്ലോട്ട് വിവരങ്ങൾ എടുക്കുന്നു
-        plot = movie.get('plot outline', movie.get('plot', ['No plot available.']))
-        if isinstance(plot, list):
-            plot = plot[0]
+        plot = getattr(movie, "plot", "No description available.")
 
-        # പോസ്റ്റർ ഇമേജ് ലിങ്ക് എടുക്കുന്നു
-        poster_url = movie.get('full-size cover url', movie.get('cover url'))
+        # IMDb പോസ്റ്റർ ഇമേജ് ലിങ്ക് എടുക്കുന്നു
+        poster_url = getattr(movie, "poster", None)
 
-        # മെസ്സേജ് ടെക്സ്റ്റ് മാർക്ക്ഡൗൺ ഫോർമാറ്റിൽ സെറ്റ് ചെയ്യുന്നു
+        # മെസ്സേജ് ടെക്സ്റ്റ് ഫോർമാറ്റ് ചെയ്യുന്നു
         caption_text = (
             f"🎬 **{title} ({year})**\n\n"
-            f"⭐ **Rating:** {rating}/10\n"
+            f"⭐ **IMDb Rating:** {rating}/10\n"
             f"🎭 **Genres:** {genres}\n\n"
             f"📖 **Plot:** {plot[:500]}..."
         )
 
+        # വിവരങ്ങൾ നേരിട്ട് റിട്ടേൺ ചെയ്യുന്നു (സേവ് ചെയ്യുന്നില്ല)
         return {
             "caption": caption_text,
             "poster": poster_url
         }
 
     except Exception as e:
-        logging.error(f"IMDb Error: {e}")
+        logging.error(f"Pure IMDb Scraping Error: {e}")
         return "ERROR"
+
 
 
 async def is_subscribed(bot, query):
