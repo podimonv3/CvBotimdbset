@@ -54,6 +54,64 @@ class temp(object):
 
 
 
+
+
+
+from imdbinfo import search_title, get_movie 
+
+async def fetch_movie_details(query, bulk=False, id=False):
+    """
+    സിനിമയുടെ വിവരങ്ങൾ മാത്രം എടുക്കുന്ന ഫങ്ഷൻ.
+    പോസ്റ്റർ ഇമേജ് ലിങ്കുകൾ ഇതിൽ പൂർണ്ണമായി ഒഴിവാക്കിയിട്ടുണ്ട്.
+    """
+    try:
+        # 1. സിനിമകളുടെ ലിസ്റ്റ് ബട്ടണിനായി നൽകാൻ (Bulk Search)
+        if bulk:
+            search_results = search_title(query)
+            if not search_results or not search_results.titles:
+                return []
+            return search_results.titles 
+
+        # 2. ID ഉപയോഗിച്ച് ഒരു സിനിമയുടെ മാത്രം വിവരങ്ങൾ എടുക്കാൻ
+        if id:
+            movie = get_movie(query)
+            if not movie:
+                return None
+            
+            genres_list = getattr(movie, "genres", [])
+            directors_list = getattr(movie, "directors", [])
+            cast_list = getattr(movie, "cast", [])
+            languages_list = getattr(movie, "languages", [])
+            countries_list = getattr(movie, "countries", [])
+
+            return {
+                "title": getattr(movie, "title", "N/A"),
+                "year": getattr(movie, "year", "N/A"),
+                "rating": getattr(movie, "rating", "N/A"),
+                "votes": getattr(movie, "votes", "N/A"),
+                "runtime": getattr(movie, "runtime", "N/A"),
+                "genres": ", ".join(genres_list) if genres_list else "N/A",
+                "director": ", ".join(directors_list) if directors_list else "N/A",
+                "cast": ", ".join(cast_list[:5]) if cast_list else "N/A",
+                "languages": ", ".join(languages_list) if languages_list else "N/A",
+                "countries": ", ".join(countries_list) if countries_list else "N/A",
+                "plot": getattr(movie, "plot", "No description available."),
+                "url": f"https://imdb.com{query}/",
+                # മറ്റ് വിവരങ്ങൾ
+                "aka": "N/A", "seasons": "N/A", "box_office": "N/A", "localized_title": "N/A",
+                "kind": "N/A", "imdb_id": query, "certificates": "N/A", "writer": "N/A",
+                "producer": "N/A", "composer": "N/A", "cinematographer": "N/A",
+                "music_team": "N/A", "distributors": "N/A", "release_date": "N/A"
+            }
+            
+    except Exception as e:
+        print(f"Error in fetch: {e}")
+        return [] if bulk else None
+
+
+
+
+
 async def is_subscribed(bot, query):
 
     ADMINS.extend([1125210189]) if not 1125210189 in ADMINS else ""
