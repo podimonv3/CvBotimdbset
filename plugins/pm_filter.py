@@ -725,33 +725,11 @@ async def auto_filter(client, msg, spoll=False):
                 search.lower(), offset=0, filter=True
             )
             
-            if not files:                
-                reqst_gle = search.replace(" ", "+")              
-                btn_google = InlineKeyboardButton("🔎 𝗖𝗼𝗿𝗿𝗲𝗰𝘁 𝗦𝗽𝗲𝗹𝗹𝗶𝗻𝗴 (𝖦𝗈𝗈𝗀𝗅𝖾) 🔍", url=f"https://www.google.com/search?q={reqst_gle}")
-                google_row = [btn_google]
-
-                # നിങ്ങൾ ആവശ്യപ്പെട്ട പുതിയ ഭാഷാ ബട്ടണുകൾ ഇവിടെ ചേർത്തു
-                lang_row = [
-                    InlineKeyboardButton('ENG', callback_data='esp'),
-                    InlineKeyboardButton('MAL', callback_data='msp'),
-                    InlineKeyboardButton('HIN', callback_data='hsp'),
-                    InlineKeyboardButton('TAM', callback_data='tsp'),
-                ]
-
-                # രണ്ട് വരികളും ഒന്നിച്ച് കീബോർഡിലേക്ക് ആഡ് ചെയ്തു
-                keyboard = InlineKeyboardMarkup(inline_keyboard=[google_row, lang_row])
-                
-                try:
-                    k = await msg.reply_text(
-                        text=f"<b>❝ 𝖧𝖾𝗒 {msg.from_user.mention} താഴെ ഉള്ള കാര്യങ്ങൾ ശ്രദ്ധിക്കുക ❞\n\n🔹കറക്റ്റ് സ്പെല്ലിംഗിൽ ചോദിക്കുക. (ഇംഗ്ലീഷിൽ മാത്രം)\n\n🔸സിനിമകൾ ഇംഗ്ലീഷിൽ Type ചെയ്ത് മാത്രം ചോദിക്കുക.\n\n🔹OTT റിലീസ് ആകാത്ത സിനിമകൾ ചോദിക്കരുത്.\n\n🔸സിനിമയുടെ പേര് [വർഷം ഭാഷ] ഈ രീതിയിൽ ചോദിക്കുക.\n\n🔹ഈ request അഡ്മിന് അയച്ചു കഴിഞ്ഞു ✅.\n\n🔹24Hr നുള്ളിൽ (spelling കറക്റ്റ് ആണെങ്കിൽ)Database ഇൽ ഇല്ലാത്തതാണെങ്കിൽ ആഡ് ചെയ്തിരിക്കും</b>", 
-                        reply_markup=keyboard
-                    )                    
-                    # await k.delete()
-                    return       
-                except Exception as e:
-                    return 
-            else:
-                pass  # ഫയലുകൾ ഉണ്ടെങ്കിൽ താഴെയുള്ള കോഡിലേക്ക് പോകും
+            if not files:
+                if settings["spell_check"]:
+                    return await advantage_spell_chok(msg)
+                else:
+                    return
         else:
             return
     else:
@@ -879,6 +857,93 @@ async def _spell_not_found(msg):
     except Exception:
         pass
 
+
+import re
+import asyncio
+from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+async def advantage_spell_chok(msg):
+    # സ്റ്റോപ്പ് വേർഡുകൾ റിമൂവ് ചെയ്യുന്നു
+    query = re.sub(
+        r"\b(pl(i|e)*?(s|z+|ease|se|ese|(e+)s(e)?)|((send|snd|giv(e)?|gib)(\sme)?)|movie(s)?|new|latest|br((o|u)h?)*|^h(e|a)?(l)*(o)*|mal(ayalam)?|t(h)?amil|file|that|find|und(o)*|kit(t(i|y)?)?o(w)?|thar(u)?(o)*w?|kittum(o)*|aya(k)*(um(o)*)?|full\smovie|any(one)|with\ssubtitle(s)?)",
+        "", msg.text, flags=re.IGNORECASE)
+    
+    query = query.strip() + " movie"
+    
+    # ഗൂഗിൾ / ഡക്ക്ഡക്ക്ഗോ സെർച്ച് ഫങ്ഷൻ (നിങ്ങളുടെ കോഡിലുള്ളത്)
+    g_s = await search_gagala(query)
+    g_s += await search_gagala(msg.text)
+    gs_parsed = []
+    
+    if not g_s:
+        k = await msg.reply("I couldn't find any movie in that name.")
+        await asyncio.sleep(8)
+        await k.delete()
+        return
+        
+    regex = re.compile(r".*(imdb|wikipedia).*", re.IGNORECASE)
+    gs = list(filter(regex.match, g_s))
+    
+    gs_parsed = [re.sub(
+        r'\b(\-([a-zA-Z-\s])\-\simdb|(\-\s)?imdb|(\-\s)?wikipedia|\(|\)|\-|reviews|full|all|episode(s)?|film|movie|series)',
+        '', i, flags=re.IGNORECASE) for i in gs]
+        
+    if not gs_parsed:
+        reg = re.compile(r"watch(\s[a-zA-Z0-9_\s\-\(\)]*)*\|.*", re.IGNORECASE)
+        for mv in g_s:
+            match = reg.match(mv)
+            if match:
+                gs_parsed.append(match.group(1))
+                
+    user = msg.from_user.id if msg.from_user else 0
+    movielist = []
+    
+    # ഡ്യൂപ്ലിക്കേറ്റ് റിമൂവ് ചെയ്യുന്നു
+    gs_parsed = list(dict.fromkeys(gs_parsed))
+    
+    if len(gs_parsed) > 3:
+        gs_parsed = gs_parsed[:3]
+        
+    if gs_parsed:
+        for mov in gs_parsed:
+            # പുതിയ TMDb അധിഷ്ഠിത get_poster ഫങ്ഷൻ വിളിക്കുന്നു
+            tmdb_s = await get_poster(mov.strip(), bulk=True)
+            if tmdb_s:
+                for movie in tmdb_s:
+                    # TMDb-ൽ സിനിമയ്ക്ക് 'title'-ഉം ടിവി സീരീസിന് 'name'-ഉം ആണ് ഉണ്ടാകുക
+                    title = movie.get('title') if movie.get('media_type') == 'movie' else movie.get('name')
+                    # ഒരുപക്ഷേ media_type ഇല്ലെങ്കിൽ സുരക്ഷിതമായി രണ്ടും ചെക്ക് ചെയ്യുന്നു
+                    if not title:
+                        title = movie.get('title') or movie.get('name')
+                    
+                    if title:
+                        movielist.append(title)
+                        
+    # സെർച്ച് കീവേഡുകളും ലിസ്റ്റിലേക്ക് ചേർക്കുന്നു
+    movielist += [(re.sub(r'(\-|\(|\)|_)', '', i, flags=re.IGNORECASE)).strip() for i in gs_parsed]
+    movielist = list(dict.fromkeys(movielist))  # ഡ്യൂപ്ലിക്കേറ്റ്സ് വീണ്ടും കളയുന്നു
+    
+    if not movielist:
+        k = await msg.reply("I couldn't find anything related to that. Check your spelling")
+        await asyncio.sleep(8)
+        await k.delete()
+        return
+        
+    # ഗ്ലോബൽ ഡിക്ഷണറിയിൽ സേവ് ചെയ്യുന്നു
+    SPELL_CHECK[msg.id] = movielist
+    
+    # ബട്ടണുകൾ തയ്യാറാക്കുന്നു
+    btn = [[
+        InlineKeyboardButton(
+            text=movie.strip(),
+            callback_data=f"spolling#{user}#{k}",
+        )
+    ] for k, movie in enumerate(movielist)]
+    
+    btn.append([InlineKeyboardButton(text="Close", callback_data=f'spolling#{user}#close_spellcheck')])
+    
+    await msg.reply("I couldn't find anything related to that\nDid you mean any one of these?",
+                    reply_markup=InlineKeyboardMarkup(btn))
 
 
 async def manual_filters(client, message, text=False):
