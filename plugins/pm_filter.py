@@ -167,55 +167,7 @@ async def next_page(bot, query):
 
 
 
-import re  # ഫയലിന്റെ മുകളിൽ ഉണ്ടെന്ന് ഉറപ്പാക്കുക
 
-@Client.on_callback_query(filters.regex(r"^spolling"))
-async def advantage_spoll_choker(bot, query):
-    _, user, movie_ = query.data.split('#')
-    
-    if int(user) != 0 and query.from_user.id != int(user):
-        return await query.answer("ഇത് നിങ്ങളുടെ സെർച്ച് റിസൾട്ട് അല്ല! ⚠️", show_alert=True)
-        
-    if movie_ == "close_spellcheck":
-        return await query.message.delete()
-        
-    movies = SPELL_CHECK.get(query.message.reply_to_message.id)
-    if not movies:
-        return await query.answer("നിങ്ങൾ പഴയൊരു ബട്ടണിലാണ് ക്ലിക്ക് ചെയ്തത്. ഇത് കാലഹരണപ്പെട്ടു! ❌", show_alert=True)
-        
-    try:
-        movie = movies[int(movie_)]
-    except (IndexError, ValueError):
-        return await query.answer("എന്തോ തകരാർ സംഭവിച്ചു. വീണ്ടും ശ്രമിക്കുക! ❌", show_alert=True)
-        
-    try:
-        await query.message.delete()
-    except Exception:
-        pass
-
-    await query.answer('Checking for Movie in database...')
-
-    # 🛠️ സിനിമയുടെ പേര് ഡാറ്റാബേസിന് അനുയോജ്യമായ രീതിയിൽ ക്ലീൻ ചെയ്യുന്നു
-    # ഇത് ബ്രാക്കറ്റുകൾ, ചിഹ്നങ്ങൾ ([, ], ', :, -) എന്നിവ മാറ്റി പകരം സിംഗിൾ സ്പേസ് നൽകും
-    clean_movie_name = re.sub(r"[^\w\s]", " ", movie)
-    # ഒന്നിലധികം സ്പേസുകൾ തുടർച്ചയായി വന്നാൽ അത് മാറ്റി ഒറ്റ സ്പേസ് ആക്കുന്നു
-    clean_movie_name = re.sub(r"\s+", " ", clean_movie_name).strip()
-
-    # 🔍 ക്ലീൻ ചെയ്ത പേര് ഉപയോഗിച്ചാണ് ഇനി ഡാറ്റാബേസിൽ തിരയുന്നത്
-    k = await manual_filters(bot, query.message, text=clean_movie_name)
-    if k == False:
-        files, offset, total_results = await get_search_results(clean_movie_name, offset=0, filter=True)
-        if files:
-            k = (clean_movie_name, files, offset, total_results)
-            await auto_filter(bot, query, k)
-        else:
-            k = await bot.send_message(
-                chat_id=query.message.chat.id,
-                text=f"<b>{clean_movie_name}</b> Not Found In DataBase ❌",
-                reply_to_message_id=query.message.reply_to_message.id
-            )
-            await asyncio.sleep(10)
-            await k.delete()
 
 
 
@@ -925,16 +877,6 @@ async def _spell_not_found(msg):
 
 
 
-import asyncio  # ഫയലിന്റെ മുകളിൽ ഉണ്ടെന്ന് ഉറപ്പാക്കുക
-
-SPELL_CHECK = {}
-
-# ബാക്ക്‌ഗ്രൗണ്ടിൽ ഡാറ്റ ഡിലീറ്റ് ചെയ്യാനുള്ള ഹെൽപ്പർ ഫങ്ക്ഷൻ
-async def auto_delete_spell_data(msg_id, delay=60):
-    await asyncio.sleep(delay)
-    if msg_id in SPELL_CHECK:
-        del SPELL_CHECK[msg_id]
-
 async def advantage_spell_chok(client, msg):
     mv_id, mv_rqst = msg.id, msg.text
     reqstr1 = msg.from_user.id if msg.from_user else 0
@@ -943,19 +885,18 @@ async def advantage_spell_chok(client, msg):
         r"br((o|u)h?)\*|^h(e|a)?(l)\*(o)\*|mal(ayalam)?|t(h)?amil|file|that|find|und(o)\*|"
         r"kit(t(i|y)?)?o(w)?|thar(u)?(o)\*w?|kittum(o)\*|aya(k)\*(um(o)\*)?|full\smovie|any(one)|with\ssubtitle(s)?)",
         "", msg.text, flags=re.IGNORECASE
-    ).strip()    
-    
+    ).strip()
     reqst_gle = quote_plus(mv_rqst)
+    google_button = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔎 𝗖𝗼𝗿𝗿𝗲𝗰𝘁 𝗦𝗽𝗲𝗹𝗹𝗶𝗻𝗴 (𝖦𝗈𝗈𝗀𝗅𝖾)", url=f"https://www.google.com/search?q={reqst_gle}")],
+        [InlineKeyboardButton("📜 Rᴜʟᴇs", url="https://t.me/Chithralokham/7"), InlineKeyboardButton("📥 Rᴇqᴜᴇsᴛ", url="https://t.me/+9Hn9bM-OK5RiM2Y1")]
+    ])
 
     try:
+        # സിനിമയുടെ വിവരങ്ങൾ എടുക്കാൻ മാത്രം get_poster ഉപയോഗിക്കുന്നു (പോസ്റ്റർ ഇമേജ് ഡൗൺലോഡ് ചെയ്യില്ല)
         movies = await get_posters(cleaned_query, bulk=True)
     except Exception:
         movies = None
-
-    google_button = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔎 𝗖𝗼𝗿𝗿𝗲𝗰𝘁 𝗦𝗽𝗲𝗹𝗹𝗶𝗻𝗴 (𝖦𝗈𝗈𝗀𝗅𝖾)", url=f"https://google.com{reqst_gle}")],
-        [InlineKeyboardButton("📜 Rᴜʟᴇs", url="https://t.me"), InlineKeyboardButton("📥 Rᴇqᴜᴇsᴛ", url="https://t.me")]
-    ])
 
     if not movies:
         try:
@@ -982,7 +923,7 @@ async def advantage_spell_chok(client, msg):
         if title:
             if year and str(year) != "N/A":
                 year_str = re.findall(r'\b(19\d{2}|20\d{2})\b', str(year))
-                year_val = f" {year_str}" if year_str else ""
+                year_val = f" {year_str[0]}" if year_str else ""
             else:
                 year_val = ""
                 
@@ -991,26 +932,19 @@ async def advantage_spell_chok(client, msg):
     if not movielist:
         return
 
-    # 💾 ഇവിടെ സിനിമകളുടെ ലിസ്റ്റ് ഡിക്‌ഷ്ണറിയിലേക്ക് സേവ് ചെയ്യുന്നു
-    SPELL_CHECK[msg.id] = movielist[:10]
+    # 📝 Heading ചേർക്കുന്നു
+    spell_list_text = script.NO_TXT + "\n"
+    spell_list_text += "<u><b>SUGGESTIONS 👇</b></u>\n\n"
     
-    # ⏱️ കൃത്യം 1 മിനിറ്റ് (60 സെക്കൻഡ്) കഴിയുമ്പോൾ ഈ മെസ്സേജ് ഐഡിയിലുള്ള ഡാറ്റ ഡിലീറ്റ് ചെയ്യും
-    asyncio.create_task(auto_delete_spell_data(msg.id, 60))
+    # സജഷനുകൾ HTML-ൽ ബോൾഡ് ആയി ലിസ്റ്റ് ചെയ്യുന്നു (പരമാവധി 10 എണ്ണം)
+    for index, movie_name in enumerate(movielist[:10], start=1):
+        spell_list_text += f"<b>{index}.</b> <code>{movie_name}</code>\n"
 
-    buttons = []
-    for index, movie_name in enumerate(movielist[:10]):
-        buttons.append([InlineKeyboardButton(text=movie_name, callback_data=f"spolling#{reqstr1}#{index}")])
-        
-    buttons.append([InlineKeyboardButton("🔎 𝗖𝗼𝗿𝗿𝗲𝗰𝘁 𝗦𝗽𝗲𝗹𝗹𝗶𝗻𝗴 (𝖦𝗈𝗈𝗀𝗅𝖾)", url=f"https://google.com{reqst_gle}")])
-    buttons.append([InlineKeyboardButton("❌ Close", callback_data=f"spolling#{reqstr1}#close_spellcheck")])
-
-    spell_list_markup = InlineKeyboardMarkup(buttons)
-    spell_list_text = script.NO_TXT if hasattr(script, 'NO_TXT') else "താങ്കൾ തിരഞ്ഞ സിനിമ കണ്ടെത്താനായില്ല. താഴെയുള്ള സജഷനുകളിൽ നിന്നും തിരഞ്ഞെടുക്കുക 👇"
-
+    # 📥 ഫോട്ടോ ഇല്ലാതെ വെറും ടെക്സ്റ്റ് മാത്രമായി മറുപടി അയക്കുന്നു
     try:
-        await msg.reply_text(
+        spell_check_del = await msg.reply_text(
             text=spell_list_text,
-            reply_markup=spell_list_markup,
+            reply_markup=google_button,
             reply_to_message_id=msg.id,
             parse_mode=enums.ParseMode.HTML,
             disable_web_page_preview=True
@@ -1018,9 +952,6 @@ async def advantage_spell_chok(client, msg):
     except Exception:
         return
 
-
-
-            
 
   
 async def manual_filters(client, message, text=False):
