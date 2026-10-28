@@ -479,7 +479,7 @@ async def fetch_poster_bytes(url):
         return None
 
 async def _omdb_search(title, year=None, bulk=False):
-    omdb_keys = _parse_api_keys(OMDB_API_KEYS)
+    omdb_keys = _parse_api_keys(OMDB_API_KEY)
     if not omdb_keys:
         return None
     try:
