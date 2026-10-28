@@ -25,9 +25,6 @@ from info import ADMINS, AUTH_CHANNEL, LONG_IMDB_DESCRIPTION, MAX_LIST_ELM, REQ_
 
 
 
-from imdbinfo import search_title, get_movie
-
-
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -54,66 +51,6 @@ class temp(object):
     U_NAME = None
     B_NAME = None
     SETTINGS = {}
-
-
-
-
-logging.basicConfig(level=logging.INFO)
-
-from imdbinfo import search_title, get_movie 
-
-async def fetch_movie_details(query, bulk=False, id=False):
-    """
-    നിങ്ങളുടെ കോളിങ് ലോജിക്കിന് അനുസരിച്ച് bulk ആയും 
-    ID ഉപയോഗിച്ചും വിവരങ്ങൾ നൽകുന്ന ഫങ്ഷൻ.
-    """
-    try:
-        # 1. ബൾക്ക് സെർച്ച് (സിനിമകളുടെ ലിസ്റ്റ് ബട്ടണിനായി നൽകാൻ)
-        if bulk:
-            search_results = search_title(query)
-            if not search_results or not search_results.titles:
-                return []
-            # സിനിമകളുടെ ലിസ്റ്റ് റിട്ടേൺ ചെയ്യുന്നു
-            return search_results.titles 
-
-        # 2. ഐഡി ഉപയോഗിച്ച് ഒരു സിനിമയുടെ മാത്രം മുഴുവൻ വിവരങ്ങൾ എടുക്കാൻ
-        if id:
-            movie = get_movie(query) # ഇവിടെ query എന്നത് IMDb ID (ttXXXX) ആണ്
-            if not movie:
-                return None
-            
-            # ഡാറ്റ ഡിക്ഷണറി രൂപത്തിലേക്ക് മാറ്റുന്നു
-            genres_list = getattr(movie, "genres", [])
-            directors_list = getattr(movie, "directors", [])
-            cast_list = getattr(movie, "cast", [])
-            languages_list = getattr(movie, "languages", [])
-            countries_list = getattr(movie, "countries", [])
-
-            return {
-                "title": getattr(movie, "title", "N/A"),
-                "year": getattr(movie, "year", "N/A"),
-                "rating": getattr(movie, "rating", "N/A"),
-                "votes": getattr(movie, "votes", "N/A"),
-                "runtime": getattr(movie, "runtime", "N/A"),
-                "genres": ", ".join(genres_list) if genres_list else "N/A",
-                "director": ", ".join(directors_list) if directors_list else "N/A",
-                "cast": ", ".join(cast_list[:5]) if cast_list else "N/A", # 5 Stars
-                "languages": ", ".join(languages_list) if languages_list else "N/A",
-                "countries": ", ".join(countries_list) if countries_list else "N/A",
-                "plot": getattr(movie, "plot", "No description available."),
-                "poster": getattr(movie, "poster", None),
-                "url": f"https://imdb.com{query}/",
-                # താഴെ പറയുന്നവ imdbinfo-ൽ ലഭ്യമാണെങ്കിൽ വരും, ഇല്ലെങ്കിൽ N/A
-                "aka": "N/A", "seasons": "N/A", "box_office": "N/A", "localized_title": "N/A",
-                "kind": "N/A", "imdb_id": query, "certificates": "N/A", "writer": "N/A",
-                "producer": "N/A", "composer": "N/A", "cinematographer": "N/A",
-                "music_team": "N/A", "distributors": "N/A", "release_date": "N/A"
-            }
-            
-    except Exception as e:
-        print(f"Error in fetch: {e}")
-        return [] if bulk else None
-
 
 
 
