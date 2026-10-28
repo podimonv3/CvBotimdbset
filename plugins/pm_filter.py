@@ -24,7 +24,7 @@ from database.ia_filterdb import Media, get_file_details, get_search_results
 from database.users_chats_db import db
 from info import ADMINS, AUTH_CHANNEL, CUSTOM_FILE_CAPTION, REQ_CHANNEL, LOG_CHANNEL
 from Script import script
-from utils import (get_poster, get_settings, get_size, is_subscribed,
+from utils import (get_poster, fetch_movie_details, get_settings, get_size, is_subscribed,
                    save_group_settings, scheduler, search_gagala, temp)
 
 logger = logging.getLogger(__name__)
@@ -801,11 +801,35 @@ async def auto_filter(client, msg, spoll=False):
         )
     else:
         btn.append([InlineKeyboardButton(text="🗓 1/1", callback_data="pages")])
-   
-    cap = f"Here is what i found for your query {search}"
-    await message.reply_text(cap, reply_markup=InlineKeyboardMarkup(btn))
+
+    # IMDb കോർ ഫങ്ഷൻ കോൾ ചെയ്ത് ഡാറ്റ എടുക്കുന്നു
+    movie_data = fetch_movie_details(search)
+
+    if movie_data and movie_data != "ERROR":
+        # സിനിമയുടെ പോസ്റ്ററും പുതിയ ക്യാപ്ഷനും ഫങ്ഷനിൽ നിന്ന് എടുക്കുന്നു
+        poster = movie_data["poster"]
+        cap = movie_data["caption"]
+    else:
+        # സിനിമ കണ്ടെത്താത്ത സാഹചര്യത്തിൽ പഴയ ക്യാപ്ഷൻ തന്നെ വെക്കാം
+        poster = None
+        cap = f"ക്ഷമിക്കണം, '{search}' എന്ന സിനിമയുടെ വിവരങ്ങൾ കണ്ടെത്താൻ കഴിഞ്ഞില്ല! ❌"
+
+    # പോസ്റ്റർ ഉണ്ടെങ്കിൽ അത് സഹിതവും, ഇല്ലെങ്കിൽ ടെക്സ്റ്റ് മാത്രമായും ഇൻലൈൻ ബട്ടൺ ചേർത്ത് അയക്കുന്നു
+    if poster:
+        await message.reply_photo(
+            photo=poster,
+            caption=cap,
+            reply_markup=InlineKeyboardMarkup(btn)
+        )
+    else:
+        await message.reply_text(
+            text=cap,
+            reply_markup=InlineKeyboardMarkup(btn)
+        )
+
+    # താൽക്കാലികമായി കാണിച്ച സെർച്ചിങ് മെസ്സേജ് ഡിലീറ്റ് ചെയ്യുന്നു
     if spoll:
-        await msg.message.delete()
+        await msg.delete()
 
 
 
