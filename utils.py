@@ -82,7 +82,7 @@ def list_to_str(k, max_elm=None):
     if isinstance(k, (int, float)):
         k = [k]
         
-    limit = int(max_elm or MAX_LIST_ELM or 5)
+    limit = int(max_elm or MAX_LIST_ELM or 1)
     if len(k) > limit:
         k = k[:limit]
     return ', '.join(str(elem) for elem in k)
