@@ -24,7 +24,7 @@ from database.ia_filterdb import Media, get_file_details, get_search_results
 from database.users_chats_db import db
 from info import ADMINS, AUTH_CHANNEL, CUSTOM_FILE_CAPTION, REQ_CHANNEL, LOG_CHANNEL
 from Script import script
-from utils import (get_poster, get_settings, get_size, is_subscribed,
+from utils import (get_poster, get_posters, get_settings, get_size, is_subscribed,
                    save_group_settings, scheduler, search_gagala, temp)
 
 logger = logging.getLogger(__name__)
