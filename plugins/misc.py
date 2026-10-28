@@ -1,7 +1,7 @@
 import os
 from pyrogram import Client, filters, enums
 from pyrogram.errors.exceptions.bad_request_400 import UserNotParticipant, MediaEmpty, PhotoInvalidDimensions, WebpageMediaEmpty
-from utils import extract_user, get_file_id, get_poster, last_online
+from utils import extract_user, get_file_id, get_poster, last_online, fetch_movie_details
 import time
 from datetime import datetime
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
@@ -128,13 +128,11 @@ async def who_is(client, message):
 
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-# pyrogram.errors ഇമ്പോർട്ട് ചെയ്തിട്ടുണ്ടെന്ന് ഉറപ്പാക്കുക
-from pyrogram.errors import MediaEmpty, PhotoInvalidDimensions, WebpageMediaEmpty
 import logging
 
 logger = logging.getLogger(__name__)
 
-# നിങ്ങളുടെ പ്രിയപ്പെട്ട കാപ്ഷൻ ടെംപ്ലേറ്റ് ഫോർമാറ്റ്
+# മെസ്സേജ് ടെക്സ്റ്റ് ടെംപ്ലേറ്റ്
 IMDB_TEMPLATE = """
 🎬 **Title:** {title} ({year})
 ⭐ **IMDb Rating:** {rating}/10 ({votes} votes)
@@ -154,13 +152,11 @@ async def imdb_search(client, message):
         k = await message.reply('🔍 Searching IMDb...')
         r, title = message.text.split(None, 1)
         
-        # ⚡ മാറ്റം: bulk=True കൊടുത്തു
         movies = await fetch_movie_details(title, bulk=True)
         
         if not movies:
             return await message.reply("ക്ഷമിക്കണം, ഫലങ്ങൾ ഒന്നും കണ്ടെത്തിയില്ല! ❌")
         
-        # ⚡ മാറ്റം: movie.movieID എന്നതിന് പകരം movie.imdb_id ഉപയോഗിച്ചു
         btn = [
             [
                 InlineKeyboardButton(
@@ -182,7 +178,6 @@ async def imdb_search(client, message):
 async def imdb_callback(bot: Client, quer_y: CallbackQuery):
     i, movie_id = quer_y.data.split('#')
     
-    # ⚡ മാറ്റം: id=True വെച്ച് ഫങ്ഷൻ കോൾ ചെയ്യുന്നു
     imdb = await fetch_movie_details(query=movie_id, id=True)
     
     if not imdb:
@@ -198,7 +193,7 @@ async def imdb_callback(bot: Client, quer_y: CallbackQuery):
         ]
     ]
     
-    # സുരക്ഷിതമായി ക്യാപ്ഷൻ ഫോർമാറ്റ് ചെയ്യുന്നു
+    # ക്യാപ്ഷൻ ഫോർമാറ്റ് ചെയ്യുന്നു (ടെക്സ്റ്റ് ലിമിറ്റിനായി പ്ലോട്ട് 900 അക്ഷരങ്ങളാക്കി കൂട്ടാം)
     caption = IMDB_TEMPLATE.format(
         title=imdb.get('title'),
         year=imdb.get('year'),
@@ -209,27 +204,22 @@ async def imdb_callback(bot: Client, quer_y: CallbackQuery):
         director=imdb.get('director'),
         cast=imdb.get('cast'),
         countries=imdb.get('countries'),
-        plot=imdb.get('plot')[:600] # ടെലിഗ്രാം ലിമിറ്റിനായി പ്ലോട്ട് ചുരുക്കിയത്
+        plot=imdb.get('plot')[:900] 
     )
 
-    if imdb.get('poster'):
-        try:
-            # Weserv പ്രോക്സി വഴി പോസ്റ്റർ ലിങ്ക് ടെലിഗ്രാമിന് പാകത്തിലാക്കുന്നു
-            safe_poster = f"https://weserv.nl{imdb['poster']}"
-            await quer_y.message.reply_photo(photo=safe_poster, caption=caption, reply_markup=InlineKeyboardMarkup(btn))
-            await quer_y.message.delete()
-        except (MediaEmpty, PhotoInvalidDimensions, WebpageMediaEmpty):
-            pic = imdb.get('poster')
-            poster = pic.replace('.jpg', "._V1_UX360.jpg")
-            try:
-                await quer_y.message.reply_photo(photo=poster, caption=caption, reply_markup=InlineKeyboardMarkup(btn))
-                await quer_y.message.delete()
-            except Exception:
-                await quer_y.message.edit(caption, reply_markup=InlineKeyboardMarkup(btn), disable_web_page_preview=False)
-        except Exception as e:
-            logger.exception(e)
-            await quer_y.message.reply(caption, reply_markup=InlineKeyboardMarkup(btn), disable_web_page_preview=False)
-    else:
-        await quer_y.message.edit(caption, reply_markup=InlineKeyboardMarkup(btn), disable_web_page_preview=False)
+    # ⚡ പോസ്റ്റർ പൂർണ്ണമായി ഒഴിവാക്കി നേരിട്ട് നിലവിലുള്ള മെസ്സേജ് എഡിറ്റ് ചെയ്യുന്നു
+    try:
+        await quer_y.message.edit(
+            text=caption, 
+            reply_markup=InlineKeyboardMarkup(btn), 
+            disable_web_page_preview=True
+        )
+    except Exception as e:
+        logger.exception(e)
+        await quer_y.message.reply(
+            text=caption, 
+            reply_markup=InlineKeyboardMarkup(btn), 
+            disable_web_page_preview=True
+        )
         
     await quer_y.answer()
