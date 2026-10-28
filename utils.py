@@ -23,6 +23,14 @@ from database.users_chats_db import db
 from info import ADMINS, AUTH_CHANNEL, MAX_LIST_ELM, REQ_CHANNEL
 
 
+# Safely import optional third-party modules
+try:
+    import imdbio as _imdbio
+    from imdbio.exceptions import ImdbioError as _ImdbioError
+    IMDBIO_AVAILABLE = True
+except ImportError:
+    IMDBIO_AVAILABLE = False
+
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -65,12 +73,6 @@ LONG_IMDB_DESCRIPTION = False
 TMDB_BASE = "https://api.themoviedb.org/3"
 TMDB_IMAGE = "https://image.tmdb.org/t/p/original"
 
-def list_to_str(val):
-    if not val:
-        return "N/A"
-    if isinstance(val, (list, tuple)):
-        return ", ".join(str(x) for x in val if x is not None) or "N/A"
-    return str(val)
 
 def _movie_year(query):
     match = re.search(r"\b(19\d{2}|20\d{2}|21\d{2})\b", str(query))
@@ -386,12 +388,161 @@ async def is_subscribed(bot, query):
             return True
         else:
             return False
-
-
-                
-
-
 # https://github.com/odysseusmax/animated-lamp/blob/2ef4730eb2b5f0596ed6d03e7b05243d93e3415b/bot/utils/broadcast.py#L37
+
+
+class _OmdbFakeMovie:
+    def __init__(self, m):
+        self._m = m
+        self.movieID = f"omdb_{m.get('imdbID')}"
+    def get(self, k, default=None):
+        _map = {'title': 'Title', 'year': 'Year', 'kind': 'Type'}
+        return self._m.get(_map.get(k, k), default)
+
+class _ImdbioFakeMovie:
+    def __init__(self, m):
+        self._m = m
+        self.movieID = f"imdbio_{m.imdb_id}"
+    def get(self, k, default=None):
+        if k == 'title': return self._m.title or default
+        if k == 'year': return self._m.year or default
+        if k == 'kind': return self._m.kind or default
+        return default
+
+def list_to_str(k, max_elm=None):
+    if not k:
+        return "N/A"
+    limit = int(max_elm or MAX_LIST_ELM or 5)
+    if len(k) > limit:
+        k = k[:limit]
+    return ', '.join(str(elem) for elem in k)
+
+def _names(people):
+    try:
+        names = [p.name for p in people if getattr(p, "name", None)]
+    except (TypeError, AttributeError):
+        return "N/A"
+    return list_to_str(names) if names else "N/A"
+
+def _cat(m, key):
+    try:
+        return _names(m.categories.get(key, []))
+    except (AttributeError, TypeError):
+        return "N/A"
+
+
+
+async def _imdbio_search(title, year=None, bulk=False):
+    if not IMDBIO_AVAILABLE:
+        return None
+    try:
+        result = await asyncio.to_thread(_imdbio.search_title, title, year=year)
+    except Exception:
+        return None
+    if not result or not result.titles:
+        return None
+    if bulk:
+        return [{"title": t.title, "year": str(t.year) if t.year else "N/A"} for t in result.titles[:6]]
+    return await _imdbio_get_details(result.titles[0].imdb_id)
+
+async def _imdbio_get_details(imdb_id):
+    if not IMDBIO_AVAILABLE:
+        return None
+    if isinstance(imdb_id, str) and imdb_id.startswith("imdbio_"):
+        imdb_id = imdb_id[len("imdbio_"):]
+    try:
+        m = await asyncio.to_thread(_imdbio.get_movie, imdb_id)
+    except Exception:
+        return None
+    if not m:
+        return None
+    return {"title": m.title or "N/A", "year": str(m.year) if m.year else "N/A"}
+
+def _hq_poster(url):
+    if not url or url == "N/A":
+        return None
+    return re.sub(r'\._[A-Z0-9,]+_(?=\.\w+$)', '', url)
+
+
+
+async def fetch_poster_bytes(url):
+    if not url:
+        return None
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"}
+    try:
+        async with httpx.AsyncClient(timeout=15, headers=headers, follow_redirects=True) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            return resp.content
+    except Exception as e:
+        logger.warning(f"poster download failed: {e}")
+        return None
+
+async def _omdb_search(title, year=None, bulk=False):
+    omdb_keys = _parse_api_keys(OMDB_API_KEYS)
+    if not omdb_keys:
+        return None
+    try:
+        params = {"apikey": omdb_keys[0], "s": title}
+        if year:
+            params["y"] = year
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get("https://omdbapi.com", params=params)
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception:
+        return None
+    if data.get("Response") != "True":
+        return None
+    results = data.get("Search", [])
+    if not results:
+        return None
+    if bulk:
+        return [{"title": r.get("Title"), "year": r.get("Year") or "N/A"} for r in results[:6]]
+    return await _omdb_get_details(results[0]["imdbID"])
+
+
+async def _omdb_get_details(imdb_id):
+    omdb_keys = _parse_api_keys(OMDB_API_KEYS)
+    if not omdb_keys:
+        return None
+    if isinstance(imdb_id, str) and imdb_id.startswith("omdb_"):
+        imdb_id = imdb_id[len("omdb_"):]
+    try:
+        params = {"apikey": omdb_keys[0], "i": imdb_id, "plot": "short"}
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get("https://omdbapi.com", params=params)
+            resp.raise_for_status()
+            m = resp.json()
+    except Exception:
+        return None
+    if not m or m.get("Response") != "True":
+        return None
+    return {"title": m.get("Title", "N/A"), "year": m.get("Year", "N/A")}
+    
+async def get_posters(query, bulk=False, id=False, file=None):
+    if id:
+        result = await _imdbio_get_details(query)
+        if result: return result
+        return await _omdb_get_details(query)
+
+    query = (query.strip()).lower()
+    title = query
+    year = re.findall(r'[1-2]\d{3}$', query, re.IGNORECASE)
+    if year:
+        year = list_to_str(year[:1])
+        title = (query.replace(year, "")).strip()
+    elif file is not None:
+        year = re.findall(r'[1-2]\d{3}', file, re.IGNORECASE)
+        if year:
+            year = list_to_str(year[:1])
+    else:
+        year = None
+
+    result = await _imdbio_search(title, year=year, bulk=bulk)
+    if result: return result
+    return await _omdb_search(title, year=year, bulk=bulk)
+
 
 
 async def broadcast_messages(user_id, message):
