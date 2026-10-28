@@ -8,7 +8,6 @@ from typing import List, Union
 import requests
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from bs4 import BeautifulSoup
-from imdb import IMDb
 from pyrogram import enums
 from pyrogram.errors import (
     FloodWait,
@@ -32,7 +31,10 @@ BTN_URL_REGEX = re.compile(
     r"(\[([^\[]+?)\]\((buttonurl|buttonalert):(?:/{0,2})(.+?)(:same)?\))"
 )
 
-imdb = IMDb()
+from imdb import Cinemagoer
+# Connects entirely offline. No rate limits, no IP blocks, zero latency.
+ia = Cinemagoer('sqlite', uri='/path/to/your/local/imdb.db') 
+
 scheduler = AsyncIOScheduler(timezone="UTC")
 
 BANNED = {}
