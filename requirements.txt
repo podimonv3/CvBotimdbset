@@ -10,5 +10,8 @@ python-dotenv
 apscheduler
 aiohttp
 imdbpy==2021.4.18
+beautifulsoup4
 cinemagoer
+imdbio
 httpx
+aiofiles
