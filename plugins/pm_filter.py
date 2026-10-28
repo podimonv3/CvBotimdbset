@@ -714,7 +714,7 @@ async def auto_filter(client, msg, spoll=False):
             # 3. Replace special characters, symbols, and brackets with a space
             search = re.sub(r"""[–—\\_,#&=+₹@!?/( )\[\]":.¡%“”-]""", " ", search)
             
-            # 4. ഒഴിവാക്കേണ്ട വാക്കുകൾ ഇവിടെ വെച്ച് മാറ്റുന്നു (ഇത് കാരണം ഉണ്ടാകുന്ന പുതിയ സ്പേസുകളും താഴെ ക്ലീൻ ചെയ്യപ്പെടും)
+            # 4. ഒഴിവാക്കേണ്ട വാക്കുകൾ ഇവിടെ വെച്ച് മാറ്റുന്നു
             words_to_remove = r'\b(malayalm|movie|muv|movies|Hindhi|full\s+movie|web\s+series?|full\s+seasons?|full|Malayam|Thamil|Malyalm|Mlylm|hd|download|mp4|mkv|bluray|rip|link|subtile)\b'
             search = re.sub(words_to_remove, '', search, flags=re.IGNORECASE)
             
@@ -764,12 +764,6 @@ async def auto_filter(client, msg, spoll=False):
         ]
 
     if offset != "":
-
-key = f"{message.chat.id}-{message.id}"
-BUTTONS[key] = search
-req = message.from_user.id if message.from_user else 0
-
-if offset != "":
         key = f"{message.chat.id}-{message.id}"
         BUTTONS[key] = search
         req = message.from_user.id if message.from_user else 0
@@ -785,70 +779,70 @@ if offset != "":
         )
     else:
         btn.append([
-        InlineKeyboardButton(text="🗓 1/1", callback_data="pages")
-    ])
+            InlineKeyboardButton(text="🗓 1/1", callback_data="pages")
+        ])
 
-imdb = await get_poster(search, file=files[0].file_name) if settings["imdb"] and files else None
-TEMPLATE = settings["template"]
+    imdb = await get_poster(search, file=files[0].file_name) if settings["imdb"] and files else None
+    TEMPLATE = settings["template"]
 
-if imdb:
-    cap = TEMPLATE.format(
-        query=search,
-        title=imdb.get("title", "N/A"),
-        votes=imdb.get("votes", "N/A"),
-        aka=imdb.get("aka", "N/A"),
-        seasons=imdb.get("seasons", "N/A"),
-        box_office=imdb.get("box_office", "N/A"),
-        localized_title=imdb.get("localized_title", "N/A"),
-        kind=imdb.get("kind", "N/A"),
-        imdb_id=imdb.get("imdb_id", "N/A"),
-        cast=imdb.get("cast", "N/A"),
-        runtime=imdb.get("runtime", "N/A"),
-        countries=imdb.get("countries", "N/A"),
-        certificates=imdb.get("certificates", "N/A"),
-        languages=imdb.get("languages", "N/A"),
-        director=imdb.get("director", "N/A"),
-        writer=imdb.get("writer", "N/A"),
-        producer=imdb.get("producer", "N/A"),
-        composer=imdb.get("composer", "N/A"),
-        cinematographer=imdb.get("cinematographer", "N/A"),
-        music_team=imdb.get("music_team", "N/A"),
-        distributors=imdb.get("distributors", "N/A"),
-        release_date=imdb.get("release_date", "N/A"),
-        year=imdb.get("year", "N/A"),
-        genres=imdb.get("genres", "N/A"),
-        poster=imdb.get("poster") or "N/A",
-        plot=imdb.get("plot", "N/A"),
-        rating=imdb.get("rating", "N/A"),
-        url=imdb.get("url", "N/A"),
-        **locals()
-    )
-else:
-    cap = f"Here is what I found for your query {search}"
-
-poster_url = imdb.get("poster") if imdb else None
-
-if poster_url:
-    try:
-        await message.reply_photo(
-            photo=poster_url,
-            caption=cap[:1024],
-            reply_markup=InlineKeyboardMarkup(btn)
+    if imdb:
+        cap = TEMPLATE.format(
+            query=search,
+            title=imdb.get("title", "N/A"),
+            votes=imdb.get("votes", "N/A"),
+            aka=imdb.get("aka", "N/A"),
+            seasons=imdb.get("seasons", "N/A"),
+            box_office=imdb.get("box_office", "N/A"),
+            localized_title=imdb.get("localized_title", "N/A"),
+            kind=imdb.get("kind", "N/A"),
+            imdb_id=imdb.get("imdb_id", "N/A"),
+            cast=imdb.get("cast", "N/A"),
+            runtime=imdb.get("runtime", "N/A"),
+            countries=imdb.get("countries", "N/A"),
+            certificates=imdb.get("certificates", "N/A"),
+            languages=imdb.get("languages", "N/A"),
+            director=imdb.get("director", "N/A"),
+            writer=imdb.get("writer", "N/A"),
+            producer=imdb.get("producer", "N/A"),
+            composer=imdb.get("composer", "N/A"),
+            cinematographer=imdb.get("cinematographer", "N/A"),
+            music_team=imdb.get("music_team", "N/A"),
+            distributors=imdb.get("distributors", "N/A"),
+            release_date=imdb.get("release_date", "N/A"),
+            year=imdb.get("year", "N/A"),
+            genres=imdb.get("genres", "N/A"),
+            poster=imdb.get("poster") or "N/A",
+            plot=imdb.get("plot", "N/A"),
+            rating=imdb.get("rating", "N/A"),
+            url=imdb.get("url", "N/A"),
+            **locals()
         )
-    except Exception as e:
-        logger.warning("Poster sending failed: %s", e)
+    else:
+        cap = f"Here is what I found for your query {search}"
+
+    poster_url = imdb.get("poster") if imdb else None
+
+    if poster_url:
+        try:
+            await message.reply_photo(
+                photo=poster_url,
+                caption=cap[:1024],
+                reply_markup=InlineKeyboardMarkup(btn)
+            )
+        except Exception as e:
+            logger.warning("Poster sending failed: %s", e)
+            await message.reply_text(
+                cap,
+                reply_markup=InlineKeyboardMarkup(btn)
+            )
+    else:
         await message.reply_text(
             cap,
             reply_markup=InlineKeyboardMarkup(btn)
         )
-else:
-    await message.reply_text(
-        cap,
-        reply_markup=InlineKeyboardMarkup(btn)
-    )
 
-if spoll:
-    await msg.delete()
+    if spoll:
+        await msg.delete()
 
 
 
