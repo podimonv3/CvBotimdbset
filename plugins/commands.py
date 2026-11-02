@@ -138,6 +138,26 @@ async def start(client, message):
     if not file_id:
         file_id = data
 
+    # ================= DYNAMIC LINK (GETFILE) REDIRECTION =================
+    elif data.startswith("getfile-"):
+        try:
+            from plugins.pm_filter import auto_filter
+            query = data.replace("getfile-", "").replace("-", " ")
+            
+            from database.ia_filterdb import get_search_results
+            files, offset, total_results = await get_search_results(query.lower(), offset=0, filter=True)
+            
+            if files:
+                await auto_filter(client, message, spoll=(query, files, offset, total_results))
+            else:
+                message.text = query
+                await auto_filter(client, message)
+            return
+        except Exception as e:
+            logger.exception(e)
+            return
+
+    
     if data.split("-", 1)[0] == "BATCH":
         sts = await message.reply("Please wait")
         file_id = data.split("-", 1)[1]
