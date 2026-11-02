@@ -8,7 +8,7 @@ from utils import get_file_id, gfilterparser, split_quotes
 
 logger = logging.getLogger(__name__)
 
-@Client.on_message(filters.command(['add', 'addg']) & filters.incoming & filters.user(ADMINS))
+@Client.on_message(filters.command(['ad', 'addg']) & filters.incoming & filters.user(ADMINS))
 async def addgfilter(client, message: Message):
     # Fixed: Corrected HTML string access parsing approach to prevent AttributeError crashes
     html_text = message.text.html if message.text else ""
