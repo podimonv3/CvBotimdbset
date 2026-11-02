@@ -712,6 +712,41 @@ def split_quotes(text: str) -> List:
     return list(filter(None, [key, rest]))
 
 
+def gfilterparser(text, keyword):
+    if "buttonalert" in text:
+        text = (text.replace("\n", "\\n").replace("\t", "\\t"))
+    buttons = []
+    note_data = ""
+    prev = 0
+    i = 0
+    alerts = []
+    for match in BTN_URL_REGEX.finditer(text):
+        n_escapes = 0
+        to_check = match.start(1) - 1
+        while to_check > 0 and text[to_check] == "\\":
+            n_escapes += 1
+            to_check -= 1
+        if n_escapes % 2 == 0:
+            note_data += text[prev:match.start(1)]
+            prev = match.end(1)
+            if match.group(3) == "buttonalert":
+                if bool(match.group(5)) and buttons:
+                    buttons[-1].append(InlineKeyboardButton(text=match.group(2), callback_data=f"gfilteralert:{i}:{keyword}"))
+                else:
+                    buttons.append([InlineKeyboardButton(text=match.group(2), callback_data=f"gfilteralert:{i}:{keyword}")])
+                i += 1
+                alerts.append(match.group(4))
+            elif bool(match.group(5)) and buttons:
+                buttons[-1].append(InlineKeyboardButton(text=match.group(2), url=match.group(4).replace(" ", "")))
+            else:
+                # Fixed: Corrected the final boundary from ))) to )]) to satisfy the syntax compiler
+                buttons.append([InlineKeyboardButton(text=match.group(2), url=match.group(4).replace(" ", ""))])
+        else:
+            note_data += text[prev:to_check]
+            prev = match.start(1) - 1
+    note_data += text[prev:]
+    return note_data, buttons, alerts if alerts else None
+    
 def parser(text, keyword):
     if "buttonalert" in text:
         text = text.replace("\n", "\\n").replace("\t", "\\t")
