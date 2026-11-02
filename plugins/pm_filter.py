@@ -1,4 +1,5 @@
 # Kanged From @TroJanZheX
+import emoji  
 import ast
 import asyncio
 import logging
@@ -19,6 +20,7 @@ from pyrogram.types import (CallbackQuery, InlineKeyboardButton,
 from database.connections_mdb import (active_connection, all_connections,
                                       delete_connection, if_active,
                                       make_active, make_inactive)
+from database.gfilters_mdb import find_gfilter, get_gfilters
 from database.filters_mdb import del_all, find_filter, get_filters
 from database.ia_filterdb import Media, get_file_details, get_search_results
 from database.users_chats_db import db
@@ -953,7 +955,84 @@ async def advantage_spell_chok(client, msg):
         return
 
 
-  
+
+async def global_filters(client, message, text=False):
+    group_id = message.chat.id
+    raw_name = text or message.text
+    
+    # 🌟 ഇവിടെ raw_name-നെ സുരക്ഷിതമായി സ്ട്രിംഗ് (str) ആക്കി മാറ്റുന്നു
+    # ഇത് Pyrogram-ന്റെ 'utf-16-le' ഡീകോഡിങ് എറർ പൂർണ്ണമായി ഇല്ലാതാക്കും
+    safe_name = str(raw_name) if raw_name else ""
+
+    try:
+        # ഇമോജികൾ നീക്കം ചെയ്യുന്നു
+        search = emoji.replace_emoji(safe_name, replace='')
+    except Exception:
+        # ഏതെങ്കിലും സാഹചര്യത്തിൽ വീണ്ടും തകരാർ വന്നാൽ എറർ അടിക്കാതെ മുന്നോട്ട് പോകാൻ
+        search = safe_name
+
+    search = re.sub(r'[\u200b\u200c\u200d\ufeff\u200e\u200f]', '', search)
+    search = re.sub(r'[\s\u00a0\u2000-\u200a\u202f\u205f\u3000]+', ' ', search)
+    search = re.sub(r"['‘’]", "", search)
+    search = re.sub(r"[-–—_,#&?/( )\[\]\\\":\.¡%“”]", " ", search)
+    search = re.sub(r"\b(hd|full|print|file)\b", "", search, flags=re.IGNORECASE)
+    find = search.lower().split(" ")
+    removes = {"pls","plz","plzz","please","send","snd","snt","gib","veno","venam","venum","undo","ayakkumo","ayakkamo","und","move","multi","dubb","dub","bro","bruh","broh","dubbed","link","lnk","iruka","pannunga","pannungga","anuppunga","anupunga","anuppungga","anupungga","subtile","kitti","kitty","tharu","kittumo","kittum","da","mwonse","bhai","share","malayalm","malylm","subtitle"}
+    search = " ".join(w for w in find if w not in removes)
+    clean_name = re.sub(r"\s+", " ", search).strip()
+
+    reply_id = message.reply_to_message.id if message.reply_to_message else message.id
+    keywords = await get_gfilters('gfilters')
+
+    for keyword in reversed(sorted(keywords, key=len)):
+        pattern = r"^" + re.escape(keyword.strip().lower()) + r"$"
+        if re.match(pattern, clean_name, flags=re.IGNORECASE):
+            reply_text, btn, alert, fileid = await find_gfilter('gfilters', keyword)
+            if reply_text: reply_text = reply_text.replace("\\n", "\n").replace("\\t", "\t")
+
+            if btn is not None:
+                try:
+                    if btn != "[]":
+                        try: button = json.loads(btn)
+                        except Exception: button = eval(btn)
+                    else: button = []
+
+                    g_msg = None
+                    if fileid == "None":
+                        while True:
+                            try:
+                                if btn == "[]":
+                                    g_msg = await client.send_message(group_id, reply_text, disable_web_page_preview=True, reply_to_message_id=reply_id)
+                                else:
+                                    g_msg = await client.send_message(group_id, reply_text, disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup(button), reply_to_message_id=reply_id)
+                                break
+                            except FloodWait as e:
+                                logger.warning(f"FloodWait triggered! Sleeping for {e.value} seconds.")
+                                await asyncio.sleep(e.value)
+                    elif btn == "[]":
+                        while True:
+                            try:
+                                g_msg = await client.send_cached_media(group_id, fileid, caption=reply_text or "", reply_to_message_id=reply_id)
+                                break
+                            except FloodWait as e:
+                                logger.warning(f"FloodWait triggered! Sleeping for {e.value} seconds.")
+                                await asyncio.sleep(e.value)
+                    else:
+                        while True:
+                            try:
+                                g_msg = await client.send_cached_media(group_id, fileid, caption=reply_text or "", reply_markup=InlineKeyboardMarkup(button), reply_to_message_id=reply_id)
+                                break
+                            except FloodWait as e:
+                                logger.warning(f"FloodWait triggered! Sleeping for {e.value} seconds.")
+                                await asyncio.sleep(e.value)
+
+                except Exception as e:
+                    logger.exception(e)
+                break
+    else:
+        return False
+
+
 async def manual_filters(client, message, text=False):
     group_id = message.chat.id
     name = text or message.text
