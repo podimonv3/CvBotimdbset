@@ -6,6 +6,7 @@ import time
 from datetime import datetime
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 import logging
+from info import IMDB_TEMPLATE
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.ERROR)
 
