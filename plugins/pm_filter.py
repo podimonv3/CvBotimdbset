@@ -966,9 +966,12 @@ async def global_filters(client, message, text=False):
     except Exception:
         search = safe_name
 
-    # യൂസർ അയച്ച മെസ്സേജിലെ എല്ലാ Symbols-ഉം (:, -, _, !, ? മുതലായവ) ഒഴിവാക്കുന്നു
+    # യൂസർ അയച്ച മെസ്സേജിലെ എല്ലാ Symbols-ഉം ഒഴിവാക്കുന്നു
     search = re.sub(r'[^\w\s]|_', ' ', search)
     clean_name = re.sub(r'\s+', ' ', search).strip()
+
+    if not clean_name:
+        return False
 
     reply_id = message.reply_to_message.id if message.reply_to_message else message.id
     keywords = await get_gfilters('gfilters')
@@ -983,46 +986,72 @@ async def global_filters(client, message, text=False):
 
             if btn is not None:
                 try:
-                    if fileid == "None":
-                        if btn == "[]":
-                            await client.send_message(
-                                group_id, 
-                                reply_text, 
-                                disable_web_page_preview=True,
-                                reply_to_message_id=reply_id
-                            )
-                        else:
+                    if btn != "[]":
+                        try:
+                            button = json.loads(btn)
+                        except Exception:
                             button = eval(btn)
-                            await client.send_message(
-                                group_id,
-                                reply_text,
-                                disable_web_page_preview=True,
-                                reply_markup=InlineKeyboardMarkup(button),
-                                reply_to_message_id=reply_id
-                            )
-
-                    elif btn == "[]":
-                        await client.send_cached_media(
-                            group_id,
-                            fileid,
-                            caption=reply_text or "",
-                            reply_to_message_id=reply_id
-                        )
-
                     else:
-                        button = eval(btn)
-                        await message.reply_cached_media(
-                            fileid,
-                            caption=reply_text or "",
-                            reply_markup=InlineKeyboardMarkup(button),
-                            reply_to_message_id=reply_id
-                        )
+                        button = []
+
+                    g_msg = None
+                    if fileid == "None":
+                        if reply_text and reply_text.strip():
+                            while True:
+                                try:
+                                    if btn == "[]":
+                                        g_msg = await client.send_message(
+                                            group_id, 
+                                            reply_text, 
+                                            disable_web_page_preview=True, 
+                                            reply_to_message_id=reply_id
+                                        )
+                                    else:
+                                        g_msg = await client.send_message(
+                                            group_id, 
+                                            reply_text, 
+                                            disable_web_page_preview=True, 
+                                            reply_markup=InlineKeyboardMarkup(button), 
+                                            reply_to_message_id=reply_id
+                                        )
+                                    break
+                                except FloodWait as e:
+                                    logger.warning(f"FloodWait triggered! Sleeping for {e.value} seconds.")
+                                    await asyncio.sleep(e.value)
+                    elif btn == "[]":
+                        while True:
+                            try:
+                                g_msg = await client.send_cached_media(
+                                    group_id, 
+                                    fileid, 
+                                    caption=reply_text or "", 
+                                    reply_to_message_id=reply_id
+                                )
+                                break
+                            except FloodWait as e:
+                                logger.warning(f"FloodWait triggered! Sleeping for {e.value} seconds.")
+                                await asyncio.sleep(e.value)
+                    else:
+                        while True:
+                            try:
+                                g_msg = await client.send_cached_media(
+                                    group_id, 
+                                    fileid, 
+                                    caption=reply_text or "", 
+                                    reply_markup=InlineKeyboardMarkup(button), 
+                                    reply_to_message_id=reply_id
+                                )
+                                break
+                            except FloodWait as e:
+                                logger.warning(f"FloodWait triggered! Sleeping for {e.value} seconds.")
+                                await asyncio.sleep(e.value)
 
                 except Exception as e:
                     logger.exception(e)
                 break
     else:
         return False
+
 
 
 async def manual_filters(client, message, text=False):
