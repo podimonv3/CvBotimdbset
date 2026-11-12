@@ -213,7 +213,8 @@ async def imdb_callback(bot: Client, quer_y: CallbackQuery):
             poster=imdb.get("poster") or "N/A",
             plot=imdb.get("plot", "N/A"),
             rating=imdb.get("rating", "N/A"),
-            url=imdb.get("url", "N/A")
+            url=imdb.get("url", "N/A"),
+            message=quer_y.message
         )
 
         markup = InlineKeyboardMarkup(btn) if btn else None
