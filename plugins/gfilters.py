@@ -134,9 +134,13 @@ async def dellacbd(client, query: CallbackQuery):
     if query.from_user.id not in ADMINS:
         return await query.answer("നിങ്ങൾക്ക് ഈ ആക്ഷൻ ചെയ്യാനുള്ള അനുമതിയില്ല! ❌", show_alert=True)
         
-    await del_allg(query.message, 'gfilters')
-    await query.message.edit_text("🗑️ All Global Filters Deleted Successfully! 👍")
+    deleted = await del_allg('gfilters')
+    if deleted:
+        await query.message.edit_text("🗑️ All Global Filters Deleted Successfully! 👍")
+    else:
+        await query.message.edit_text("⚠️ No global filters found to delete, or an error occurred.")
     await query.answer()
+
 
 @Client.on_callback_query(filters.regex("^gfiltersdeleteallcancel$"))
 async def cancel_delall(client, query: CallbackQuery):
