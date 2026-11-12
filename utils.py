@@ -630,9 +630,9 @@ def get_file_id(msg: Message):
             enums.MessageMediaType.VOICE,
             enums.MessageMediaType.STICKER,
         ):
-            obj = getattr(msg, message_type)
+            obj = getattr(msg, message_type.value, None)
             if obj:
-                setattr(obj, "message_type", message_type)
+                setattr(obj, "message_type", message_type.value)
                 return obj
 
 
