@@ -137,7 +137,7 @@ async def imdb_search(client, message):
     title = message.text.split(None, 1)[1].strip()
 
     try:
-        movies = await get_posters(title, bulk=True)
+        movies = await get_poster(title, bulk=True)
         if not movies:
             await k.edit("No results found.")
             return
@@ -169,7 +169,7 @@ async def imdb_search(client, message):
 async def imdb_callback(bot: Client, quer_y: CallbackQuery):
     try:
         _, movie_id = quer_y.data.split("#", 1)
-        imdb = await get_posters(query=movie_id, id=True)
+        imdb = await get_poster(query=movie_id, id=True)
 
         if not imdb:
             await quer_y.answer("No results found.", show_alert=True)
