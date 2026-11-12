@@ -137,7 +137,7 @@ async def imdb_search(client, message):
     title = message.text.split(None, 1)[1].strip()
 
     try:
-        movies = await get_poster(title, bulk=True)
+        movies = await get_posters(title, bulk=True)
         if not movies:
             await k.edit("No results found.")
             return
