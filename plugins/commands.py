@@ -139,7 +139,7 @@ async def start(client, message):
         file_id = data
 
     # ================= DYNAMIC LINK (GETFILE) REDIRECTION =================
-    elif data.startswith("getfile-"):
+    if data.startswith("getfile-"):
         try:
             from plugins.pm_filter import auto_filter
             query = data.replace("getfile-", "").replace("-", " ")
